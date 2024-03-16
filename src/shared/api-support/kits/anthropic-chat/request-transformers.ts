@@ -1,98 +1,23 @@
-import { z } from "zod";
-import { config } from "../../config";
-import { BadRequestError } from "../errors";
-import {
-  flattenOpenAIMessageContent,
-  OpenAIChatMessage,
-  OpenAIV1ChatCompletionSchema,
-} from "./openai";
-import { APIFormatTransformer } from "./index";
+import { AnthropicChatMessage, AnthropicV1MessagesSchema } from "./schema";
+import { AnthropicV1TextSchema, APIRequestTransformer, OpenAIChatMessage } from "../../index";
+import { BadRequestError } from "../../../errors";
 
-const CLAUDE_OUTPUT_MAX = config.maxOutputTokensAnthropic;
+import { OpenAIV1ChatCompletionSchema } from "../openai/schema";
 
-const AnthropicV1BaseSchema = z
-  .object({
-    model: z.string().max(100),
-    stop_sequences: z.array(z.string().max(500)).optional(),
-    stream: z.boolean().optional().default(false),
-    temperature: z.coerce.number().optional().default(1),
-    top_k: z.coerce.number().optional(),
-    top_p: z.coerce.number().optional(),
-    metadata: z.object({ user_id: z.string().optional() }).optional(),
-  })
-  .strip();
+/**
+ * Represents the union of all content types without the `string` shorthand
+ * for `text` content.
+ */
+type AnthropicChatMessageContentWithoutString = Exclude<
+  AnthropicChatMessage["content"],
+  string
+>;
+/** Represents a message with all shorthand `string` content expanded. */
+type ConvertedAnthropicChatMessage = AnthropicChatMessage & {
+  content: AnthropicChatMessageContentWithoutString;
+};
 
-// https://docs.anthropic.com/claude/reference/complete_post [deprecated]
-export const AnthropicV1TextSchema = AnthropicV1BaseSchema.merge(
-  z.object({
-    prompt: z.string(),
-    max_tokens_to_sample: z.coerce
-      .number()
-      .int()
-      .transform((v) => Math.min(v, CLAUDE_OUTPUT_MAX)),
-  })
-);
-
-const AnthropicV1MessageMultimodalContentSchema = z.array(
-  z.union([
-    z.object({ type: z.literal("text"), text: z.string() }),
-    z.object({
-      type: z.literal("image"),
-      source: z.object({
-        type: z.literal("base64"),
-        media_type: z.string().max(100),
-        data: z.string(),
-      }),
-    }),
-  ])
-);
-
-// https://docs.anthropic.com/claude/reference/messages_post
-export const AnthropicV1MessagesSchema = AnthropicV1BaseSchema.merge(
-  z.object({
-    messages: z.array(
-      z.object({
-        role: z.enum(["user", "assistant"]),
-        content: z.union([
-          z.string(),
-          AnthropicV1MessageMultimodalContentSchema,
-        ]),
-      })
-    ),
-    max_tokens: z
-      .number()
-      .int()
-      .transform((v) => Math.min(v, CLAUDE_OUTPUT_MAX)),
-    system: z.string().optional(),
-  })
-);
-export type AnthropicChatMessage = z.infer<
-  typeof AnthropicV1MessagesSchema
->["messages"][0];
-
-function openAIMessagesToClaudeTextPrompt(messages: OpenAIChatMessage[]) {
-  return (
-    messages
-      .map((m) => {
-        let role: string = m.role;
-        if (role === "assistant") {
-          role = "Assistant";
-        } else if (role === "system") {
-          role = "System";
-        } else if (role === "user") {
-          role = "Human";
-        }
-        const name = m.name?.trim();
-        const content = flattenOpenAIMessageContent(m.content);
-        // https://console.anthropic.com/docs/prompt-design
-        // `name` isn't supported by Anthropic but we can still try to use it.
-        return `\n\n${role}: ${name ? `(as ${name}) ` : ""}${content}`;
-      })
-      .join("") + "\n\nAssistant:"
-  );
-}
-
-export const transformOpenAIToAnthropicChat: APIFormatTransformer<
+export const transformOpenAIToAnthropicChat: APIRequestTransformer<
   typeof AnthropicV1MessagesSchema
 > = async (req) => {
   const { body } = req;
@@ -127,53 +52,11 @@ export const transformOpenAIToAnthropicChat: APIFormatTransformer<
   };
 };
 
-export const transformOpenAIToAnthropicText: APIFormatTransformer<
-  typeof AnthropicV1TextSchema
-> = async (req) => {
-  const { body } = req;
-  const result = OpenAIV1ChatCompletionSchema.safeParse(body);
-  if (!result.success) {
-    req.log.warn(
-      { issues: result.error.issues, body },
-      "Invalid OpenAI-to-Anthropic Text request"
-    );
-    throw result.error;
-  }
-
-  req.headers["anthropic-version"] = "2023-06-01";
-
-  const { messages, ...rest } = result.data;
-  const prompt = openAIMessagesToClaudeTextPrompt(messages);
-
-  let stops = rest.stop
-    ? Array.isArray(rest.stop)
-      ? rest.stop
-      : [rest.stop]
-    : [];
-  // Recommended by Anthropic
-  stops.push("\n\nHuman:");
-  // Helps with jailbreak prompts that send fake system messages and multi-bot
-  // chats that prefix bot messages with "System: Respond as <bot name>".
-  stops.push("\n\nSystem:");
-  // Remove duplicates
-  stops = [...new Set(stops)];
-
-  return {
-    model: rest.model,
-    prompt: prompt,
-    max_tokens_to_sample: rest.max_tokens,
-    stop_sequences: stops,
-    stream: rest.stream,
-    temperature: rest.temperature,
-    top_p: rest.top_p,
-  };
-};
-
 /**
  * Converts an older Anthropic Text Completion prompt to the newer Messages API
  * by splitting the flat text into messages.
  */
-export const transformAnthropicTextToAnthropicChat: APIFormatTransformer<
+export const transformAnthropicTextToAnthropicChat: APIRequestTransformer<
   typeof AnthropicV1MessagesSchema
 > = async (req) => {
   const { body } = req;
@@ -254,39 +137,6 @@ function validateAnthropicTextPrompt(prompt: string) {
     );
   }
 }
-
-export function flattenAnthropicMessages(
-  messages: AnthropicChatMessage[]
-): string {
-  return messages
-    .map((msg) => {
-      const name = msg.role === "user" ? "\n\nHuman: " : "\n\nAssistant: ";
-      const parts = Array.isArray(msg.content)
-        ? msg.content
-        : [{ type: "text", text: msg.content }];
-      return `${name}: ${parts
-        .map((part) =>
-          part.type === "text"
-            ? part.text
-            : `[Omitted multimodal content of type ${part.type}]`
-        )
-        .join("\n")}`;
-    })
-    .join("\n\n");
-}
-
-/**
- * Represents the union of all content types without the `string` shorthand
- * for `text` content.
- */
-type AnthropicChatMessageContentWithoutString = Exclude<
-  AnthropicChatMessage["content"],
-  string
->;
-/** Represents a message with all shorthand `string` content expanded. */
-type ConvertedAnthropicChatMessage = AnthropicChatMessage & {
-  content: AnthropicChatMessageContentWithoutString;
-};
 
 function openAIMessagesToClaudeChatPrompt(messages: OpenAIChatMessage[]): {
   messages: AnthropicChatMessage[];

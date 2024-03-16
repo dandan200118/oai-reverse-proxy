@@ -14,7 +14,7 @@ import {
   flattenAnthropicMessages,
   MistralAIChatMessage,
   OpenAIChatMessage,
-} from "../../../shared/api-schemas";
+} from "../../../shared/api-support";
 import { APIFormat } from "../../../shared/key-management";
 
 /** If prompt logging is enabled, enqueues the prompt for logging. */

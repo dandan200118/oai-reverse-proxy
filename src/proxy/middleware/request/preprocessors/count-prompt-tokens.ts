@@ -6,7 +6,7 @@ import {
   GoogleAIChatMessage,
   MistralAIChatMessage,
   OpenAIChatMessage,
-} from "../../../../shared/api-schemas";
+} from "../../../../shared/api-support";
 
 /**
  * Given a request with an already-transformed body, counts the number of

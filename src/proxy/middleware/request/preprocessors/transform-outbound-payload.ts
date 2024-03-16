@@ -1,14 +1,14 @@
 import {
   API_REQUEST_VALIDATORS,
   API_REQUEST_TRANSFORMERS,
-} from "../../../../shared/api-schemas";
+} from "../../../../shared/api-support";
 import { BadRequestError } from "../../../../shared/errors";
-import { fixMistralPrompt } from "../../../../shared/api-schemas/mistral-ai";
 import {
   isImageGenerationRequest,
   isTextGenerationRequest,
 } from "../../common";
 import { RequestPreprocessor } from "../index";
+import { fixMistralPrompt } from "../../../../shared/api-support/kits/mistral-ai/request-transformers";
 
 /** Transforms an incoming request body to one that matches the target API. */
 export const transformOutboundPayload: RequestPreprocessor = async (req) => {

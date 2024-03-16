@@ -7,7 +7,7 @@ import {
   MistralAIChatMessage,
   OpenAIChatMessage,
   flattenAnthropicMessages,
-} from "../../../../shared/api-schemas";
+} from "../../../../shared/api-support";
 
 const rejectedClients = new Map<string, number>();
 

@@ -1,6 +1,6 @@
 import { getTokenizer } from "@anthropic-ai/tokenizer";
 import { Tiktoken } from "tiktoken/lite";
-import { AnthropicChatMessage } from "../api-schemas";
+import { AnthropicChatMessage } from "../api-support";
 import { libSharp } from "../file-storage";
 import { logger } from "../../logger";
 

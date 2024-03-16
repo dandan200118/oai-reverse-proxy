@@ -1,8 +1,7 @@
 import { z } from "zod";
-import { config } from "../../config";
+import { config } from "../../../../config";
 
 export const OPENAI_OUTPUT_MAX = config.maxOutputTokensOpenAI;
-
 // https://platform.openai.com/docs/api-reference/chat/create
 const OpenAIV1ChatContentArraySchema = z.array(
   z.union([
@@ -81,53 +80,3 @@ export const OpenAIV1ChatCompletionSchema = z
 export type OpenAIChatMessage = z.infer<
   typeof OpenAIV1ChatCompletionSchema
 >["messages"][0];
-
-export function flattenOpenAIMessageContent(
-  content: OpenAIChatMessage["content"]
-): string {
-  return Array.isArray(content)
-    ? content
-        .map((contentItem) => {
-          if ("text" in contentItem) return contentItem.text;
-          if ("image_url" in contentItem) return "[ Uploaded Image Omitted ]";
-        })
-        .join("\n")
-    : content;
-}
-
-export function flattenOpenAIChatMessages(messages: OpenAIChatMessage[]) {
-  // Temporary to allow experimenting with prompt strategies
-  const PROMPT_VERSION: number = 1;
-  switch (PROMPT_VERSION) {
-    case 1:
-      return (
-        messages
-          .map((m) => {
-            // Claude-style human/assistant turns
-            let role: string = m.role;
-            if (role === "assistant") {
-              role = "Assistant";
-            } else if (role === "system") {
-              role = "System";
-            } else if (role === "user") {
-              role = "User";
-            }
-            return `\n\n${role}: ${flattenOpenAIMessageContent(m.content)}`;
-          })
-          .join("") + "\n\nAssistant:"
-      );
-    case 2:
-      return messages
-        .map((m) => {
-          // Claude without prefixes (except system) and no Assistant priming
-          let role: string = "";
-          if (role === "system") {
-            role = "System: ";
-          }
-          return `\n\n${role}${flattenOpenAIMessageContent(m.content)}`;
-        })
-        .join("");
-    default:
-      throw new Error(`Unknown prompt version: ${PROMPT_VERSION}`);
-  }
-}

@@ -1,5 +1,5 @@
 import * as tokenizer from "./mistral-tokenizer-js";
-import { MistralAIChatMessage } from "../api-schemas";
+import { MistralAIChatMessage } from "../api-support";
 
 export function init() {
   tokenizer.initializemistralTokenizer();

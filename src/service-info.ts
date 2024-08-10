@@ -3,8 +3,6 @@ import {
   AnthropicKey,
   AwsBedrockKey,
   GcpKey,
-  AzureOpenAIKey,
-  GoogleAIKey,
   keyPool,
   OpenAIKey,
 } from "./shared/key-management";
@@ -26,21 +24,14 @@ import { getCostSuffix, getTokenCostUsd, prettyTokens } from "./shared/stats";
 import { getUniqueIps } from "./proxy/rate-limit";
 import { assertNever } from "./shared/utils";
 import { getEstimatedWaitTime, getQueueLength } from "./proxy/queue";
-import { MistralAIKey } from "./shared/key-management/mistral-ai/provider";
 
 const CACHE_TTL = 2000;
 
 type KeyPoolKey = ReturnType<typeof keyPool.list>[0];
 const keyIsOpenAIKey = (k: KeyPoolKey): k is OpenAIKey =>
   k.service === "openai";
-const keyIsAzureKey = (k: KeyPoolKey): k is AzureOpenAIKey =>
-  k.service === "azure";
 const keyIsAnthropicKey = (k: KeyPoolKey): k is AnthropicKey =>
   k.service === "anthropic";
-const keyIsGoogleAIKey = (k: KeyPoolKey): k is GoogleAIKey =>
-  k.service === "google-ai";
-const keyIsMistralAIKey = (k: KeyPoolKey): k is MistralAIKey =>
-  k.service === "mistral-ai";
 const keyIsAwsKey = (k: KeyPoolKey): k is AwsBedrockKey => k.service === "aws";
 const keyIsGcpKey = (k: KeyPoolKey): k is GcpKey => k.service === "gcp";
 
@@ -54,14 +45,15 @@ type ModelAggregates = {
   overQuota?: number;
   pozzed?: number;
   awsLogged?: number;
-  awsSonnet?: number;
-  awsSonnet35?: number;
-  awsHaiku?: number;
+  // needed to disambugiate aws-claude family's variants
+  awsClaude2?: number;
+  awsSonnet3?: number;
+  awsSonnet3_5?: number;
+  awsHaiku: number;
   gcpSonnet?: number;
   gcpSonnet35?: number;
   gcpHaiku?: number;
   queued: number;
-  queueTime: string;
   tokens: number;
 };
 /** All possible combinations of model family and aggregate type. */
@@ -93,14 +85,10 @@ type AnthropicInfo = BaseFamilyInfo & {
 };
 type AwsInfo = BaseFamilyInfo & {
   privacy?: string;
-  sonnetKeys?: number;
-  sonnet35Keys?: number;
-  haikuKeys?: number;
+  claudeVariants?: string;
 };
 type GcpInfo = BaseFamilyInfo & {
-  sonnetKeys?: number;
-  sonnet35Keys?: number;
-  haikuKeys?: number;
+  claudeVariants?: string;
 };
 
 // prettier-ignore
@@ -175,7 +163,7 @@ const SERVICE_ENDPOINTS: { [s in LLMService]: Record<string, string> } = {
   },
 };
 
-const modelStats = new Map<ModelAggregateKey, number>();
+const familyStats = new Map<ModelAggregateKey, number>();
 const serviceStats = new Map<keyof AllStats, number>();
 
 let cachedInfo: ServiceInfo | undefined;
@@ -192,7 +180,7 @@ export function buildInfo(baseUrl: string, forAdmin = false): ServiceInfo {
       .concat("turbo")
   );
 
-  modelStats.clear();
+  familyStats.clear();
   serviceStats.clear();
   keys.forEach(addKeyToAggregates);
 
@@ -311,150 +299,99 @@ function increment<T extends keyof AllStats | ModelAggregateKey>(
 ) {
   map.set(key, (map.get(key) || 0) + delta);
 }
+const addToService = increment.bind(null, serviceStats);
+const addToFamily = increment.bind(null, familyStats);
 
 function addKeyToAggregates(k: KeyPoolKey) {
-  increment(serviceStats, "proompts", k.promptCount);
-  increment(serviceStats, "openai__keys", k.service === "openai" ? 1 : 0);
-  increment(serviceStats, "anthropic__keys", k.service === "anthropic" ? 1 : 0);
-  increment(serviceStats, "google-ai__keys", k.service === "google-ai" ? 1 : 0);
-  increment(
-    serviceStats,
-    "mistral-ai__keys",
-    k.service === "mistral-ai" ? 1 : 0
-  );
-  increment(serviceStats, "aws__keys", k.service === "aws" ? 1 : 0);
-  increment(serviceStats, "gcp__keys", k.service === "gcp" ? 1 : 0);
-  increment(serviceStats, "azure__keys", k.service === "azure" ? 1 : 0);
+  addToService("proompts", k.promptCount);
+  addToService("openai__keys", k.service === "openai" ? 1 : 0);
+  addToService("anthropic__keys", k.service === "anthropic" ? 1 : 0);
+  addToService("google-ai__keys", k.service === "google-ai" ? 1 : 0);
+  addToService("mistral-ai__keys", k.service === "mistral-ai" ? 1 : 0);
+  addToService("aws__keys", k.service === "aws" ? 1 : 0);
+  addToService("gcp__keys", k.service === "gcp" ? 1 : 0);
+  addToService("azure__keys", k.service === "azure" ? 1 : 0);
 
   let sumTokens = 0;
   let sumCost = 0;
 
+  const incrementGenericFamilyStats = (f: ModelFamily) => {
+    const tokens = (k as any)[`${f}Tokens`];
+    sumTokens += tokens;
+    sumCost += getTokenCostUsd(f, tokens);
+    addToFamily(`${f}__tokens`, tokens);
+    addToFamily(`${f}__revoked`, k.isRevoked ? 1 : 0);
+    addToFamily(`${f}__active`, k.isDisabled ? 0 : 1);
+  };
+
   switch (k.service) {
     case "openai":
       if (!keyIsOpenAIKey(k)) throw new Error("Invalid key type");
-      increment(
-        serviceStats,
-        "openai__uncheckedKeys",
-        Boolean(k.lastChecked) ? 0 : 1
-      );
-
+      addToService("openai__uncheckedKeys", Boolean(k.lastChecked) ? 0 : 1);
       k.modelFamilies.forEach((f) => {
-        const tokens = k[`${f}Tokens`];
-        sumTokens += tokens;
-        sumCost += getTokenCostUsd(f, tokens);
-        increment(modelStats, `${f}__tokens`, tokens);
-        increment(modelStats, `${f}__revoked`, k.isRevoked ? 1 : 0);
-        increment(modelStats, `${f}__active`, k.isDisabled ? 0 : 1);
-        increment(modelStats, `${f}__trial`, k.isTrial ? 1 : 0);
-        increment(modelStats, `${f}__overQuota`, k.isOverQuota ? 1 : 0);
+        incrementGenericFamilyStats(f);
+        addToFamily(`${f}__trial`, k.isTrial ? 1 : 0);
+        addToFamily(`${f}__overQuota`, k.isOverQuota ? 1 : 0);
       });
       break;
-    case "azure":
-      if (!keyIsAzureKey(k)) throw new Error("Invalid key type");
-      k.modelFamilies.forEach((f) => {
-        const tokens = k[`${f}Tokens`];
-        sumTokens += tokens;
-        sumCost += getTokenCostUsd(f, tokens);
-        increment(modelStats, `${f}__tokens`, tokens);
-        increment(modelStats, `${f}__active`, k.isDisabled ? 0 : 1);
-        increment(modelStats, `${f}__revoked`, k.isRevoked ? 1 : 0);
-      });
-      break;
-    case "anthropic": {
+    case "anthropic":
       if (!keyIsAnthropicKey(k)) throw new Error("Invalid key type");
+      addToService("anthropic__uncheckedKeys", Boolean(k.lastChecked) ? 0 : 1);
       k.modelFamilies.forEach((f) => {
-        const tokens = k[`${f}Tokens`];
-        sumTokens += tokens;
-        sumCost += getTokenCostUsd(f, tokens);
-        increment(modelStats, `${f}__tokens`, tokens);
-        increment(modelStats, `${f}__trial`, k.tier === "free" ? 1 : 0);
-        increment(modelStats, `${f}__revoked`, k.isRevoked ? 1 : 0);
-        increment(modelStats, `${f}__active`, k.isDisabled ? 0 : 1);
-        increment(modelStats, `${f}__overQuota`, k.isOverQuota ? 1 : 0);
-        increment(modelStats, `${f}__pozzed`, k.isPozzed ? 1 : 0);
-      });
-      increment(
-        serviceStats,
-        "anthropic__uncheckedKeys",
-        Boolean(k.lastChecked) ? 0 : 1
-      );
-      break;
-    }
-    case "google-ai": {
-      if (!keyIsGoogleAIKey(k)) throw new Error("Invalid key type");
-      k.modelFamilies.forEach((family) => {
-        const tokens = k[`${family}Tokens`];
-        sumTokens += tokens;
-        sumCost += getTokenCostUsd(family, tokens);
-        increment(modelStats, `${family}__tokens`, tokens);
-        increment(modelStats, `${family}__active`, k.isDisabled ? 0 : 1);
-        increment(modelStats, `${family}__revoked`, k.isRevoked ? 1 : 0);
+        incrementGenericFamilyStats(f);
+        addToFamily(`${f}__trial`, k.tier === "free" ? 1 : 0);
+        addToFamily(`${f}__overQuota`, k.isOverQuota ? 1 : 0);
+        addToFamily(`${f}__pozzed`, k.isPozzed ? 1 : 0);
       });
       break;
-    }
-    case "mistral-ai": {
-      if (!keyIsMistralAIKey(k)) throw new Error("Invalid key type");
-      k.modelFamilies.forEach((f) => {
-        const tokens = k[`${f}Tokens`];
-        sumTokens += tokens;
-        sumCost += getTokenCostUsd(f, tokens);
-        increment(modelStats, `${f}__tokens`, tokens);
-        increment(modelStats, `${f}__revoked`, k.isRevoked ? 1 : 0);
-        increment(modelStats, `${f}__active`, k.isDisabled ? 0 : 1);
-      });
-      break;
-    }
+
     case "aws": {
       if (!keyIsAwsKey(k)) throw new Error("Invalid key type");
-      k.modelFamilies.forEach((f) => {
-        const tokens = k[`${f}Tokens`];
-        sumTokens += tokens;
-        sumCost += getTokenCostUsd(f, tokens);
-        increment(modelStats, `${f}__tokens`, tokens);
-        increment(modelStats, `${f}__revoked`, k.isRevoked ? 1 : 0);
-        increment(modelStats, `${f}__active`, k.isDisabled ? 0 : 1);
+      k.modelFamilies.forEach(incrementGenericFamilyStats);
+      k.modelIds.forEach((id) => {
+        if (id.includes("claude-3-sonnet")) {
+          addToFamily(`aws-claude__awsSonnet3`, 1);
+        } else if (id.includes("claude-3-5-sonnet")) {
+          addToFamily(`aws-claude__awsSonnet3_5`, 1);
+        } else if (id.includes("claude-3-haiku")) {
+          addToFamily(`aws-claude__awsHaiku`, 1);
+        } else if (id.includes("claude-v2")) {
+          addToFamily(`aws-claude__awsClaude2`, 1);
+        }
       });
-      increment(modelStats, `aws-claude__awsSonnet`, k.sonnetEnabled ? 1 : 0);
-      increment(modelStats, `aws-claude__awsSonnet35`, k.sonnet35Enabled ? 1 : 0);
-      increment(modelStats, `aws-claude__awsHaiku`, k.haikuEnabled ? 1 : 0);
-
       // Ignore revoked keys for aws logging stats, but include keys where the
       // logging status is unknown.
       const countAsLogged =
         k.lastChecked && !k.isDisabled && k.awsLoggingStatus === "enabled";
-      increment(modelStats, `aws-claude__awsLogged`, countAsLogged ? 1 : 0);
+      addToFamily(`aws-claude__awsLogged`, countAsLogged ? 1 : 0);
       break;
     }
-    case "gcp": {
+    case "gcp":
       if (!keyIsGcpKey(k)) throw new Error("Invalid key type");
-      k.modelFamilies.forEach((f) => {
-        const tokens = k[`${f}Tokens`];
-        sumTokens += tokens;
-        sumCost += getTokenCostUsd(f, tokens);
-        increment(modelStats, `${f}__tokens`, tokens);
-        increment(modelStats, `${f}__revoked`, k.isRevoked ? 1 : 0);
-        increment(modelStats, `${f}__active`, k.isDisabled ? 0 : 1);
-      });
-      increment(modelStats, `gcp-claude__gcpSonnet`, k.sonnetEnabled ? 1 : 0);
-      increment(modelStats, `gcp-claude__gcpSonnet35`, k.sonnet35Enabled ? 1 : 0);
-      increment(modelStats, `gcp-claude__gcpHaiku`, k.haikuEnabled ? 1 : 0);
+      k.modelFamilies.forEach(incrementGenericFamilyStats);
+      // TODO: add modelIds to GcpKey
       break;
-    }
+    // These services don't have any additional stats to track.
+    case "azure":
+    case "google-ai":
+    case "mistral-ai":
+      k.modelFamilies.forEach(incrementGenericFamilyStats);
+      break;
     default:
       assertNever(k.service);
   }
 
-  increment(serviceStats, "tokens", sumTokens);
-  increment(serviceStats, "tokenCost", sumCost);
+  addToService("tokens", sumTokens);
+  addToService("tokenCost", sumCost);
 }
 
 function getInfoForFamily(family: ModelFamily): BaseFamilyInfo {
-  const tokens = modelStats.get(`${family}__tokens`) || 0;
+  const tokens = familyStats.get(`${family}__tokens`) || 0;
   const cost = getTokenCostUsd(family, tokens);
   let info: BaseFamilyInfo & OpenAIInfo & AnthropicInfo & AwsInfo & GcpInfo = {
     usage: `${prettyTokens(tokens)} tokens${getCostSuffix(cost)}`,
-    activeKeys: modelStats.get(`${family}__active`) || 0,
-    revokedKeys: modelStats.get(`${family}__revoked`) || 0,
+    activeKeys: familyStats.get(`${family}__active`) || 0,
+    revokedKeys: familyStats.get(`${family}__revoked`) || 0,
   };
 
   // Add service-specific stats to the info object.
@@ -462,8 +399,8 @@ function getInfoForFamily(family: ModelFamily): BaseFamilyInfo {
     const service = MODEL_FAMILY_SERVICE[family];
     switch (service) {
       case "openai":
-        info.overQuotaKeys = modelStats.get(`${family}__overQuota`) || 0;
-        info.trialKeys = modelStats.get(`${family}__trial`) || 0;
+        info.overQuotaKeys = familyStats.get(`${family}__overQuota`) || 0;
+        info.trialKeys = familyStats.get(`${family}__trial`) || 0;
 
         // Delete trial/revoked keys for non-turbo families.
         // Trials are turbo 99% of the time, and if a key is invalid we don't
@@ -474,16 +411,25 @@ function getInfoForFamily(family: ModelFamily): BaseFamilyInfo {
         }
         break;
       case "anthropic":
-        info.overQuotaKeys = modelStats.get(`${family}__overQuota`) || 0;
-        info.trialKeys = modelStats.get(`${family}__trial`) || 0;
-        info.prefilledKeys = modelStats.get(`${family}__pozzed`) || 0;
+        info.overQuotaKeys = familyStats.get(`${family}__overQuota`) || 0;
+        info.trialKeys = familyStats.get(`${family}__trial`) || 0;
+        info.prefilledKeys = familyStats.get(`${family}__pozzed`) || 0;
         break;
       case "aws":
         if (family === "aws-claude") {
-          info.sonnetKeys = modelStats.get(`${family}__awsSonnet`) || 0;
-          info.sonnet35Keys = modelStats.get(`${family}__awsSonnet35`) || 0;
-          info.haikuKeys = modelStats.get(`${family}__awsHaiku`) || 0;
-          const logged = modelStats.get(`${family}__awsLogged`) || 0;
+          const logged = familyStats.get(`${family}__awsLogged`) || 0;
+          const claudeVariants = new Set<string>();
+          if (familyStats.get(`${family}__awsClaude2`) || 0)
+            claudeVariants.add("claude v2");
+          if (familyStats.get(`${family}__awsSonnet3`) || 0)
+            claudeVariants.add("sonnet 3");
+          if (familyStats.get(`${family}__awsSonnet3_5`) || 0)
+            claudeVariants.add("sonnet 3.5");
+          if (familyStats.get(`${family}__awsHaiku`) || 0)
+            claudeVariants.add("haiku");
+          info.claudeVariants = claudeVariants.size
+            ? `${Array.from(claudeVariants).join(", ")}`
+            : undefined;
           if (logged > 0) {
             info.privacy = config.allowAwsLogging
               ? `AWS logging verification inactive. Prompts could be logged.`
@@ -493,9 +439,8 @@ function getInfoForFamily(family: ModelFamily): BaseFamilyInfo {
         break;
       case "gcp":
         if (family === "gcp-claude") {
-          info.sonnetKeys = modelStats.get(`${family}__gcpSonnet`) || 0;
-          info.sonnet35Keys = modelStats.get(`${family}__gcpSonnet35`) || 0;
-          info.haikuKeys = modelStats.get(`${family}__gcpHaiku`) || 0;
+          // TODO: implement
+          info.claudeVariants = ["not implemented"];
         }
         break;
     }

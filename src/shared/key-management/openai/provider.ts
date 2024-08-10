@@ -26,8 +26,6 @@ export interface OpenAIKey extends Key, OpenAIKeyUsage {
   isTrial: boolean;
   /** Set when key check returns a non-transient 429. */
   isOverQuota: boolean;
-  /** The time at which this key was last rate limited. */
-  rateLimitedAt: number;
   /**
    * Last known X-RateLimit-Requests-Reset header from OpenAI, converted to a
    * number.
@@ -111,6 +109,7 @@ export class OpenAIKeyProvider implements KeyProvider<OpenAIKey> {
           .digest("hex")
           .slice(0, 8)}`,
         rateLimitedAt: 0,
+        rateLimitedUntil: 0,
         rateLimitRequestsReset: 0,
         rateLimitTokensReset: 0,
         turboTokens: 0,

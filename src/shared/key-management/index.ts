@@ -30,6 +30,10 @@ export interface Key {
   lastChecked: number;
   /** Hash of the key, for logging and to find the key in the pool. */
   hash: string;
+  /** The time at which this key was last rate limited. */
+  rateLimitedAt: number;
+  /** The time until which this key is rate limited. */
+  rateLimitedUntil: number;
 }
 
 /*
@@ -56,6 +60,27 @@ export interface KeyProvider<T extends Key = Key> {
   getLockoutPeriod(model: ModelFamily): number;
   markRateLimited(hash: string): void;
   recheck(): void;
+}
+
+export function createGenericGetLockoutPeriod<T extends Key>(
+  getKeys: () => T[]
+) {
+  return function (this: unknown, family?: ModelFamily): number {
+    const keys = getKeys();
+    const activeKeys = keys.filter(
+      (k) => !k.isDisabled && (!family || k.modelFamilies.includes(family))
+    );
+
+    if (activeKeys.length === 0) return 0;
+
+    const now = Date.now();
+    const rateLimitedKeys = activeKeys.filter((k) => now < k.rateLimitedUntil);
+    const anyNotRateLimited = rateLimitedKeys.length < activeKeys.length;
+
+    if (anyNotRateLimited) return 0;
+
+    return Math.min(...activeKeys.map((k) => k.rateLimitedUntil - now));
+  };
 }
 
 export const keyPool = new KeyPool();

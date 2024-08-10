@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { Key, KeyProvider } from "..";
+import { createGenericGetLockoutPeriod, Key, KeyProvider } from "..";
 import { config } from "../../../config";
 import { PaymentRequiredError } from "../../errors";
 import { logger } from "../../../logger";
@@ -14,10 +14,6 @@ type AzureOpenAIKeyUsage = {
 export interface AzureOpenAIKey extends Key, AzureOpenAIKeyUsage {
   readonly service: "azure";
   readonly modelFamilies: AzureOpenAIModelFamily[];
-  /** The time at which this key was last rate limited. */
-  rateLimitedAt: number;
-  /** The time until which this key is rate limited. */
-  rateLimitedUntil: number;
   contentFiltering: boolean;
 }
 
@@ -156,26 +152,7 @@ export class AzureOpenAIKeyProvider implements KeyProvider<AzureOpenAIKey> {
     key[`${getAzureOpenAIModelFamily(model)}Tokens`] += tokens;
   }
 
-  // TODO: all of this shit is duplicate code
-
-  public getLockoutPeriod(family: AzureOpenAIModelFamily) {
-    const activeKeys = this.keys.filter(
-      (key) => !key.isDisabled && key.modelFamilies.includes(family)
-    );
-
-    // Don't lock out if there are no keys available or the queue will stall.
-    // Just let it through so the add-key middleware can throw an error.
-    if (activeKeys.length === 0) return 0;
-
-    const now = Date.now();
-    const rateLimitedKeys = activeKeys.filter((k) => now < k.rateLimitedUntil);
-    const anyNotRateLimited = rateLimitedKeys.length < activeKeys.length;
-
-    if (anyNotRateLimited) return 0;
-
-    // If all keys are rate-limited, return time until the first key is ready.
-    return Math.min(...activeKeys.map((k) => k.rateLimitedUntil - now));
-  }
+  getLockoutPeriod = createGenericGetLockoutPeriod(() => this.keys);
 
   /**
    * This is called when we receive a 429, which means there are already five

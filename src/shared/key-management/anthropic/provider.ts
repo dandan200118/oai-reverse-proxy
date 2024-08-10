@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { Key, KeyProvider } from "..";
+import { createGenericGetLockoutPeriod, Key, KeyProvider } from "..";
 import { config } from "../../../config";
 import { logger } from "../../../logger";
 import { AnthropicModelFamily, getClaudeModelFamily } from "../../models";
@@ -23,10 +23,6 @@ type AnthropicKeyUsage = {
 export interface AnthropicKey extends Key, AnthropicKeyUsage {
   readonly service: "anthropic";
   readonly modelFamilies: AnthropicModelFamily[];
-  /** The time at which this key was last rate limited. */
-  rateLimitedAt: number;
-  /** The time until which this key is rate limited. */
-  rateLimitedUntil: number;
   /**
    * Whether this key requires a special preamble.  For unclear reasons, some
    * Anthropic keys will throw an error if the prompt does not begin with a
@@ -217,22 +213,7 @@ export class AnthropicKeyProvider implements KeyProvider<AnthropicKey> {
     key[`${getClaudeModelFamily(model)}Tokens`] += tokens;
   }
 
-  public getLockoutPeriod() {
-    const activeKeys = this.keys.filter((k) => !k.isDisabled);
-    // Don't lock out if there are no keys available or the queue will stall.
-    // Just let it through so the add-key middleware can throw an error.
-    if (activeKeys.length === 0) return 0;
-
-    const now = Date.now();
-    const rateLimitedKeys = activeKeys.filter((k) => now < k.rateLimitedUntil);
-    const anyNotRateLimited = rateLimitedKeys.length < activeKeys.length;
-
-    if (anyNotRateLimited) return 0;
-
-    // If all keys are rate-limited, return the time until the first key is
-    // ready.
-    return Math.min(...activeKeys.map((k) => k.rateLimitedUntil - now));
-  }
+  getLockoutPeriod = createGenericGetLockoutPeriod(() => this.keys);
 
   /**
    * This is called when we receive a 429, which means there are already five

@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { Key, KeyProvider } from "..";
+import { createGenericGetLockoutPeriod, Key, KeyProvider } from "..";
 import { config } from "../../../config";
 import { logger } from "../../../logger";
 import { getGoogleAIModelFamily, type GoogleAIModelFamily } from "../../models";
@@ -28,10 +28,6 @@ type GoogleAIKeyUsage = {
 export interface GoogleAIKey extends Key, GoogleAIKeyUsage {
   readonly service: "google-ai";
   readonly modelFamilies: GoogleAIModelFamily[];
-  /** The time at which this key was last rate limited. */
-  rateLimitedAt: number;
-  /** The time until which this key is rate limited. */
-  rateLimitedUntil: number;
   /** All detected model IDs on this key. */
   modelIds: string[];
 }
@@ -162,22 +158,7 @@ export class GoogleAIKeyProvider implements KeyProvider<GoogleAIKey> {
     key[`${getGoogleAIModelFamily(model)}Tokens`] += tokens;
   }
 
-  public getLockoutPeriod() {
-    const activeKeys = this.keys.filter((k) => !k.isDisabled);
-    // Don't lock out if there are no keys available or the queue will stall.
-    // Just let it through so the add-key middleware can throw an error.
-    if (activeKeys.length === 0) return 0;
-
-    const now = Date.now();
-    const rateLimitedKeys = activeKeys.filter((k) => now < k.rateLimitedUntil);
-    const anyNotRateLimited = rateLimitedKeys.length < activeKeys.length;
-
-    if (anyNotRateLimited) return 0;
-
-    // If all keys are rate-limited, return the time until the first key is
-    // ready.
-    return Math.min(...activeKeys.map((k) => k.rateLimitedUntil - now));
-  }
+  getLockoutPeriod = createGenericGetLockoutPeriod(() => this.keys);
 
   /**
    * This is called when we receive a 429, which means there are already five

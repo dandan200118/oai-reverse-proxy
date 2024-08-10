@@ -5,7 +5,7 @@ import axios, { AxiosError, AxiosRequestConfig, AxiosHeaders } from "axios";
 import { URL } from "url";
 import { KeyCheckerBase } from "../key-checker-base";
 import type { AwsBedrockKey, AwsBedrockKeyProvider } from "./provider";
-import { AwsBedrockModelFamily, getAwsBedrockModelFamily } from "../../models";
+import { getAwsBedrockModelFamily } from "../../models";
 import { config } from "../../../config";
 
 const KNOWN_MODEL_IDS = [

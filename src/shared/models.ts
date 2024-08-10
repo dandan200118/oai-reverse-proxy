@@ -192,7 +192,7 @@ export function getMistralAIModelFamily(model: string): MistralAIModelFamily {
 export function getAwsBedrockModelFamily(model: string): AwsBedrockModelFamily {
   // remove vendor and version from AWS model ids
   // 'anthropic.claude-3-5-sonnet-20240620-v1:0' -> 'claude-3-5-sonnet-20240620'
-  const deAwsified = model.replace(/^(\w+)\.(.+?)(-v\d)?(:\d+)*$/, "$2");
+  const deAwsified = model.replace(/^(\w+)\.(.+?)(-v\d+)?(:\d+)*$/, "$2");
 
   if (["claude", "anthropic"].some((x) => model.includes(x))) {
     return `aws-${getClaudeModelFamily(deAwsified)}`;

@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { Key, KeyProvider } from "..";
+import { createGenericGetLockoutPeriod, Key, KeyProvider } from "..";
 import { config } from "../../../config";
 import { logger } from "../../../logger";
 import { AwsBedrockModelFamily, getAwsBedrockModelFamily } from "../../models";
@@ -13,10 +13,6 @@ type AwsBedrockKeyUsage = {
 export interface AwsBedrockKey extends Key, AwsBedrockKeyUsage {
   readonly service: "aws";
   readonly modelFamilies: AwsBedrockModelFamily[];
-  /** The time at which this key was last rate limited. */
-  rateLimitedAt: number;
-  /** The time until which this key is rate limited. */
-  rateLimitedUntil: number;
   /**
    * The confirmed logging status of this key. This is "unknown" until we
    * receive a response from the AWS API. Keys which are logged, or not
@@ -24,9 +20,11 @@ export interface AwsBedrockKey extends Key, AwsBedrockKeyUsage {
    * set.
    */
   awsLoggingStatus: "unknown" | "disabled" | "enabled";
-  sonnetEnabled: boolean;
-  haikuEnabled: boolean;
-  sonnet35Enabled: boolean;
+  // TODO: replace with list of model ids
+  // sonnetEnabled: boolean;
+  // haikuEnabled: boolean;
+  // sonnet35Enabled: boolean;
+  modelIds: string[];
 }
 
 /**
@@ -76,11 +74,16 @@ export class AwsBedrockKeyProvider implements KeyProvider<AwsBedrockKey> {
           .digest("hex")
           .slice(0, 8)}`,
         lastChecked: 0,
-        sonnetEnabled: true,
-        haikuEnabled: false,
-        sonnet35Enabled: false,
+        modelIds: ["anthropic.claude-3-sonnet-20240229-v1:0"],
+        // sonnetEnabled: true,
+        // haikuEnabled: false,
+        // sonnet35Enabled: false,
         ["aws-claudeTokens"]: 0,
         ["aws-claude-opusTokens"]: 0,
+        ["aws-mistral-tinyTokens"]: 0,
+        ["aws-mistral-smallTokens"]: 0,
+        ["aws-mistral-mediumTokens"]: 0,
+        ["aws-mistral-largeTokens"]: 0,
       };
       this.keys.push(newKey);
     }
@@ -99,41 +102,35 @@ export class AwsBedrockKeyProvider implements KeyProvider<AwsBedrockKey> {
   }
 
   public get(model: string) {
+    let neededVariantId = model;
+    // The only AWS model that breaks naming convention is Claude v2. Anthropic
+    // calls this claude-2 but AWS calls it claude-v2.
+    if (model.includes("claude-2")) neededVariantId = "claude-v2";
     const neededFamily = getAwsBedrockModelFamily(model);
 
-    // this is a horrible mess
-    // each of these should be separate model families, but adding model
-    // families is not low enough friction for the rate at which aws claude
-    // model variants are added.
-    const needsSonnet35 =
-      model.includes("claude-3-5-sonnet") && neededFamily === "aws-claude";
-    const needsSonnet =
-      !needsSonnet35 &&
-      model.includes("sonnet") &&
-      neededFamily === "aws-claude";
-    const needsHaiku = model.includes("haiku") && neededFamily === "aws-claude";
-
     const availableKeys = this.keys.filter((k) => {
-      const isNotLogged = k.awsLoggingStatus !== "enabled";
+      // Select keys which
       return (
+        // are enabled
         !k.isDisabled &&
-        (isNotLogged || config.allowAwsLogging) &&
-        (k.sonnetEnabled || !needsSonnet) && // sonnet and haiku are both under aws-claude, while opus is not
-        (k.haikuEnabled || !needsHaiku) &&
-        (k.sonnet35Enabled || !needsSonnet35) &&
-        k.modelFamilies.includes(neededFamily)
+        // are not logged, unless policy allows it
+        (config.allowAwsLogging || k.awsLoggingStatus !== "enabled") &&
+        // have access to the model family we need
+        k.modelFamilies.includes(neededFamily) &&
+        // have access to the specific variant we need
+        // note that requests can be made for the AWS ID or original vendor ID;
+        // all vendor IDs are substrings of the AWS ID.
+        k.modelIds.some((m) => m.includes(neededVariantId))
       );
     });
 
     this.log.debug(
       {
-        model,
-        neededFamily,
-        needsSonnet,
-        needsHaiku,
-        needsSonnet35,
-        availableKeys: availableKeys.length,
+        requestedModel: model,
+        selectedVariant: neededVariantId,
+        selectedFamily: neededFamily,
         totalKeys: this.keys.length,
+        availableKeys: availableKeys.length,
       },
       "Selecting AWS key"
     );
@@ -195,22 +192,7 @@ export class AwsBedrockKeyProvider implements KeyProvider<AwsBedrockKey> {
     key[`${getAwsBedrockModelFamily(model)}Tokens`] += tokens;
   }
 
-  public getLockoutPeriod() {
-    // TODO: same exact behavior for three providers, should be refactored
-    const activeKeys = this.keys.filter((k) => !k.isDisabled);
-    // Don't lock out if there are no keys available or the queue will stall.
-    // Just let it through so the add-key middleware can throw an error.
-    if (activeKeys.length === 0) return 0;
-
-    const now = Date.now();
-    const rateLimitedKeys = activeKeys.filter((k) => now < k.rateLimitedUntil);
-    const anyNotRateLimited = rateLimitedKeys.length < activeKeys.length;
-
-    if (anyNotRateLimited) return 0;
-
-    // If all keys are rate-limited, return time until the first key is ready.
-    return Math.min(...activeKeys.map((k) => k.rateLimitedUntil - now));
-  }
+  getLockoutPeriod = createGenericGetLockoutPeriod(() => this.keys);
 
   /**
    * This is called when we receive a 429, which means there are already five

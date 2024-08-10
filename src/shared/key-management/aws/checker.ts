@@ -58,6 +58,11 @@ export class AwsKeyChecker extends KeyCheckerBase<AwsBedrockKey> {
         this.invokeModel("anthropic.claude-3-haiku-20240307-v1:0", key),
         this.invokeModel("anthropic.claude-3-opus-20240229-v1:0", key),
         this.invokeModel("anthropic.claude-3-5-sonnet-20240620-v1:0", key),
+        this.invokeModel("mistral.mistral-7b-instruct-v0:2", key),
+        this.invokeModel("mistral.mixtral-8x7b-instruct-v0:1", key),
+        this.invokeModel("mistral.mistral-large-2402-v1:0", key),
+        this.invokeModel("mistral.mistral-large-2407-v1:0", key),
+        this.invokeModel("mistral.mistral-small-2402-v1:0", key),
       ];
     }
 

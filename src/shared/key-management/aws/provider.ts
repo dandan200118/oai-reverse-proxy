@@ -20,10 +20,6 @@ export interface AwsBedrockKey extends Key, AwsBedrockKeyUsage {
    * set.
    */
   awsLoggingStatus: "unknown" | "disabled" | "enabled";
-  // TODO: replace with list of model ids
-  // sonnetEnabled: boolean;
-  // haikuEnabled: boolean;
-  // sonnet35Enabled: boolean;
   modelIds: string[];
 }
 
@@ -103,8 +99,10 @@ export class AwsBedrockKeyProvider implements KeyProvider<AwsBedrockKey> {
 
   public get(model: string) {
     let neededVariantId = model;
-    // The only AWS model that breaks naming convention is Claude v2. Anthropic
-    // calls this claude-2 but AWS calls it claude-v2.
+    // This function accepts both Anthropic/Mistral IDs and AWS IDs.
+    // Generally all AWS model IDs are supersets of the original vendor IDs.
+    // Claude 2 is the only model that breaks this convention; Anthropic calls
+    // it claude-2 but AWS calls it claude-v2.
     if (model.includes("claude-2")) neededVariantId = "claude-v2";
     const neededFamily = getAwsBedrockModelFamily(model);
 
@@ -118,8 +116,6 @@ export class AwsBedrockKeyProvider implements KeyProvider<AwsBedrockKey> {
         // have access to the model family we need
         k.modelFamilies.includes(neededFamily) &&
         // have access to the specific variant we need
-        // note that requests can be made for the AWS ID or original vendor ID;
-        // all vendor IDs are substrings of the AWS ID.
         k.modelIds.some((m) => m.includes(neededVariantId))
       );
     });

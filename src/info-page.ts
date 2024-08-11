@@ -45,7 +45,7 @@ const MODEL_FAMILY_FRIENDLY_NAME: { [f in ModelFamily]: string } = {
 
 const converter = new showdown.Converter();
 const customGreeting = fs.existsSync("greeting.md")
-  ? `\n## Server Greeting\n${fs.readFileSync("greeting.md", "utf8")}`
+  ? `<div id="servergreeting">${fs.readFileSync("greeting.md", "utf8")}</div>`
   : "";
 let infoPageHtml: string | undefined;
 let infoPageLastUpdated = 0;

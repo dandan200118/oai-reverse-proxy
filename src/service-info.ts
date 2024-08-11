@@ -96,12 +96,10 @@ export type ServiceInfo = {
   uptime: number;
   endpoints: {
     openai?: string;
-    openai2?: string;
     anthropic?: string;
-    "anthropic-claude-3"?: string;
     "google-ai"?: string;
     "mistral-ai"?: string;
-    aws?: string;
+    "aws"?: string;
     gcp?: string;
     azure?: string;
     "openai-image"?: string;
@@ -139,7 +137,6 @@ export type ServiceInfo = {
 const SERVICE_ENDPOINTS: { [s in LLMService]: Record<string, string> } = {
   openai: {
     openai: `%BASE%/openai`,
-    openai2: `%BASE%/openai/turbo-instruct`,
     "openai-image": `%BASE%/openai-image`,
   },
   anthropic: {
@@ -152,7 +149,8 @@ const SERVICE_ENDPOINTS: { [s in LLMService]: Record<string, string> } = {
     "mistral-ai": `%BASE%/mistral-ai`,
   },
   aws: {
-    aws: `%BASE%/aws/claude`,
+    claude: `%BASE%/aws/claude`,
+    mistral: `%BASE%/aws/mistral`,
   },
   gcp: {
     gcp: `%BASE%/gcp/claude`,

@@ -1,44 +1,55 @@
-import express, { Request, Response, NextFunction } from "express";
-import { gatekeeper } from "./gatekeeper";
-import { checkRisuToken } from "./check-risu-token";
-import { openai } from "./openai";
-import { openaiImage } from "./openai-image";
+import express from "express";
+import { addV1 } from "./add-v1";
 import { anthropic } from "./anthropic";
+import { aws } from "./aws";
+import { azure } from "./azure";
+import { checkRisuToken } from "./check-risu-token";
+import { gatekeeper } from "./gatekeeper";
+import { gcp } from "./gcp";
 import { googleAI } from "./google-ai";
 import { mistralAI } from "./mistral-ai";
-import { aws } from "./aws";
-import { gcp } from "./gcp";
-import { azure } from "./azure";
+import { openai } from "./openai";
+import { openaiImage } from "./openai-image";
 import { sendErrorToClient } from "./middleware/response/error-generator";
 
 const proxyRouter = express.Router();
+
+// Remove `expect: 100-continue` header from requests due to incompatibility
+// with node-http-proxy.
 proxyRouter.use((req, _res, next) => {
   if (req.headers.expect) {
-    // node-http-proxy does not like it when clients send `expect: 100-continue`
-    // and will stall. none of the upstream APIs use this header anyway.
     delete req.headers.expect;
   }
   next();
 });
+
+// Apply body parsers.
 proxyRouter.use(
   express.json({ limit: "100mb" }),
   express.urlencoded({ extended: true, limit: "100mb" })
 );
+
+// Apply auth/rate limits.
 proxyRouter.use(gatekeeper);
 proxyRouter.use(checkRisuToken);
+
+// Initialize request queue metadata.
 proxyRouter.use((req, _res, next) => {
   req.startTime = Date.now();
   req.retryCount = 0;
   next();
 });
+
+// Proxy endpoints.
 proxyRouter.use("/openai", addV1, openai);
 proxyRouter.use("/openai-image", addV1, openaiImage);
 proxyRouter.use("/anthropic", addV1, anthropic);
 proxyRouter.use("/google-ai", addV1, googleAI);
 proxyRouter.use("/mistral-ai", addV1, mistralAI);
-proxyRouter.use("/aws/claude", addV1, aws);
+proxyRouter.use("/aws", aws);
 proxyRouter.use("/gcp/claude", addV1, gcp);
 proxyRouter.use("/azure/openai", addV1, azure);
+
 // Redirect browser requests to the homepage.
 proxyRouter.get("*", (req, res, next) => {
   const isBrowser = req.headers["user-agent"]?.includes("Mozilla");
@@ -48,7 +59,8 @@ proxyRouter.get("*", (req, res, next) => {
     next();
   }
 });
-// Handle 404s.
+
+// Send a fake client error if user specifies an invalid proxy endpoint.
 proxyRouter.use((req, res) => {
   sendErrorToClient({
     req,
@@ -69,11 +81,3 @@ proxyRouter.use((req, res) => {
 });
 
 export { proxyRouter as proxyRouter };
-
-function addV1(req: Request, res: Response, next: NextFunction) {
-  // Clients don't consistently use the /v1 prefix so we'll add it for them.
-  if (!req.path.startsWith("/v1/") && !req.path.startsWith("/v1beta/")) {
-    req.url = `/v1${req.url}`;
-  }
-  next();
-}

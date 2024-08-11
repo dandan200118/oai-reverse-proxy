@@ -440,7 +440,7 @@ function getInfoForFamily(family: ModelFamily): BaseFamilyInfo {
       case "gcp":
         if (family === "gcp-claude") {
           // TODO: implement
-          info.claudeVariants = ["not implemented"];
+          info.claudeVariants = "not implemented";
         }
         break;
     }

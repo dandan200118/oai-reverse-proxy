@@ -1,9 +1,10 @@
 import crypto from "crypto";
-import { createGenericGetLockoutPeriod, Key, KeyProvider } from "..";
 import { config } from "../../../config";
 import { logger } from "../../../logger";
-import { getGoogleAIModelFamily, type GoogleAIModelFamily } from "../../models";
 import { PaymentRequiredError } from "../../errors";
+import { getGoogleAIModelFamily, type GoogleAIModelFamily } from "../../models";
+import { createGenericGetLockoutPeriod, Key, KeyProvider } from "..";
+import { prioritizeKeys } from "../prioritize-keys";
 import { GoogleAIKeyChecker } from "./checker";
 
 // Note that Google AI is not the same as Vertex AI, both are provided by
@@ -108,29 +109,10 @@ export class GoogleAIKeyProvider implements KeyProvider<GoogleAIKey> {
       throw new PaymentRequiredError("No Google AI keys available");
     }
 
-    // Select a key, from highest priority to lowest priority:
-    // 1. Keys which are not rate limited
-    //    a. If all keys were rate limited recently, select the least-recently
-    //       rate limited key.
-    // 3. Keys which have not been used in the longest time
-
-    const now = Date.now();
-
-    const keysByPriority = availableKeys.sort((a, b) => {
-      const aRateLimited = now - a.rateLimitedAt < RATE_LIMIT_LOCKOUT;
-      const bRateLimited = now - b.rateLimitedAt < RATE_LIMIT_LOCKOUT;
-
-      if (aRateLimited && !bRateLimited) return 1;
-      if (!aRateLimited && bRateLimited) return -1;
-      if (aRateLimited && bRateLimited) {
-        return a.rateLimitedAt - b.rateLimitedAt;
-      }
-
-      return a.lastUsed - b.lastUsed;
-    });
+    const keysByPriority = prioritizeKeys(availableKeys);
 
     const selectedKey = keysByPriority[0];
-    selectedKey.lastUsed = now;
+    selectedKey.lastUsed = Date.now();
     this.throttle(selectedKey.hash);
     return { ...selectedKey };
   }

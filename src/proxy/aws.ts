@@ -2,12 +2,14 @@
 
 import { Request, Response, Router } from "express";
 import { config } from "../config";
-import { awsClaude } from "./aws-claude";
 import { addV1 } from "./add-v1";
+import { awsClaude } from "./aws-claude";
+import { awsMistral } from "./aws-mistral";
+import { AwsBedrockKey, keyPool } from "../shared/key-management";
 
 const awsRouter = Router();
 awsRouter.use("/claude", addV1, awsClaude);
-// awsRouter.use("/mistral", addV1, awsMistralRouter);
+awsRouter.use("/mistral", addV1, awsMistral);
 awsRouter.get("/:vendor?/models", handleModelsRequest);
 
 const MODELS_CACHE_TTL = 10000;
@@ -17,6 +19,12 @@ function handleModelsRequest(req: Request, res: Response) {
   if (!config.awsCredentials) return { object: "list", data: [] };
   if (new Date().getTime() - modelsCacheTime < MODELS_CACHE_TTL) {
     return res.json(modelsCache);
+  }
+
+  const availableModelIds = new Set<string>();
+  for (const key of keyPool.list()) {
+    if (key.isDisabled || key.service !== "aws") continue;
+    (key as AwsBedrockKey).modelIds.forEach((id) => availableModelIds.add(id));
   }
 
   // https://docs.aws.amazon.com/bedrock/latest/userguide/model-ids.html
@@ -32,7 +40,9 @@ function handleModelsRequest(req: Request, res: Response) {
     "mistral.mistral-large-2402-v1:0",
     "mistral.mistral-large-2407-v1:0",
     "mistral.mistral-small-2402-v1:0",
-  ].map((id) => {
+  ]
+    .filter((id) => availableModelIds.has(id))
+    .map((id) => {
     const vendor = id.match(/^(.*)\./)?.[1];
     return {
       id,
@@ -47,7 +57,10 @@ function handleModelsRequest(req: Request, res: Response) {
 
   const requestedVendor = req.params.vendor;
   const vendor = requestedVendor === "claude" ? "anthropic" : requestedVendor;
-  modelsCache = { object: "list", data: models.filter((m) => m.root === vendor) };
+  modelsCache = {
+    object: "list",
+    data: models.filter((m) => m.root === vendor),
+  };
   modelsCacheTime = new Date().getTime();
 
   return res.json(modelsCache);

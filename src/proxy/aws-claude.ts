@@ -1,7 +1,6 @@
 import { Request, RequestHandler, Router } from "express";
 import { createProxyMiddleware } from "http-proxy-middleware";
 import { v4 } from "uuid";
-import { config } from "../config";
 import { logger } from "../logger";
 import { createQueueMiddleware } from "./queue";
 import { ipLimiter } from "./rate-limit";
@@ -16,7 +15,10 @@ import {
   ProxyResHandlerWithBody,
   createOnProxyResHandler,
 } from "./middleware/response";
-import { transformAnthropicChatResponseToAnthropicText, transformAnthropicChatResponseToOpenAI } from "./anthropic";
+import {
+  transformAnthropicChatResponseToAnthropicText,
+  transformAnthropicChatResponseToOpenAI,
+} from "./anthropic";
 
 /** Only used for non-streaming requests. */
 const awsResponseHandler: ProxyResHandlerWithBody = async (
@@ -87,7 +89,7 @@ function transformAwsTextResponseToOpenAI(
   };
 }
 
-const awsProxy = createQueueMiddleware({
+const awsClaudeProxy = createQueueMiddleware({
   beforeProxy: signAwsRequest,
   proxyMiddleware: createProxyMiddleware({
     target: "bad-target-will-be-rewritten",
@@ -152,7 +154,12 @@ const preprocessOpenAICompatRequest: RequestHandler = (req, res, next) => {
 
 const awsClaudeRouter = Router();
 // Native(ish) Anthropic text completion endpoint.
-awsClaudeRouter.post("/v1/complete", ipLimiter, preprocessAwsTextRequest, awsProxy);
+awsClaudeRouter.post(
+  "/v1/complete",
+  ipLimiter,
+  preprocessAwsTextRequest,
+  awsClaudeProxy
+);
 // Native Anthropic chat completion endpoint.
 awsClaudeRouter.post(
   "/v1/messages",
@@ -161,7 +168,7 @@ awsClaudeRouter.post(
     { inApi: "anthropic-chat", outApi: "anthropic-chat", service: "aws" },
     { afterTransform: [maybeReassignModel] }
   ),
-  awsProxy
+  awsClaudeProxy
 );
 
 // OpenAI-to-AWS Anthropic compatibility endpoint.
@@ -169,7 +176,7 @@ awsClaudeRouter.post(
   "/v1/chat/completions",
   ipLimiter,
   preprocessOpenAICompatRequest,
-  awsProxy
+  awsClaudeProxy
 );
 
 /**
@@ -179,7 +186,7 @@ awsClaudeRouter.post(
  * - frontends sending Anthropic model names that AWS doesn't recognize
  * - frontends sending OpenAI model names because they expect the proxy to
  *   translate them
- * 
+ *
  * If client sends AWS model ID it will be used verbatim. Otherwise, various
  * strategies are used to try to map a non-AWS model name to AWS model ID.
  */
@@ -212,7 +219,7 @@ function maybeReassignModel(req: Request) {
     req.body.model = "anthropic.claude-instant-v1";
     return;
   }
-  
+
   const ver = minor ? `${major}.${minor}` : major;
   switch (ver) {
     case "1":

@@ -22,18 +22,19 @@ import { SSEStreamAdapter } from "./streaming/sse-stream-adapter";
 const pipelineAsync = promisify(pipeline);
 
 /**
- * `handleStreamedResponse` consumes and transforms a streamed response from the
- * upstream service, forwarding events to the client in their requested format.
+ * `handleStreamedResponse` consumes a streamed response from the upstream API,
+ * decodes chunk-by-chunk into a stream of events, transforms those events into
+ * the client's requested format, and forwards the result to the client.
+ *
  * After the entire stream has been consumed, it resolves with the full response
  * body so that subsequent middleware in the chain can process it as if it were
- * a non-streaming response.
+ * a non-streaming response (to count output tokens, track usage, etc).
  *
- * In the event of an error, the request's streaming flag is unset and the non-
- * streaming response handler is called instead.
- *
- * If the error is retryable, that handler will re-enqueue the request and also
- * reset the streaming flag. Unfortunately the streaming flag is set and unset
- * in multiple places, so it's hard to keep track of.
+ * In the event of an error, the request's streaming flag is unset and the
+ * request is bounced back to the non-streaming response handler. If the error
+ * is retryable, that handler will re-enqueue the request and also reset the
+ * streaming flag. Unfortunately the streaming flag is set and unset in multiple
+ * places, so it's hard to keep track of.
  */
 export const handleStreamedResponse: RawResponseBodyHandler = async (
   proxyRes,
@@ -70,13 +71,21 @@ export const handleStreamedResponse: RawResponseBodyHandler = async (
     logger: req.log,
   };
 
-  // Decoder turns the raw response stream into a stream of events in some
-  // format (text/event-stream, vnd.amazon.event-stream, streaming JSON, etc).
-  const decoder = getDecoder({ ...streamOptions, input: proxyRes });
-  // Adapter transforms the decoded events into server-sent events.
-  const adapter = new SSEStreamAdapter(streamOptions);
-  // Aggregator compiles all events into a single response object.
+  // While the request is streaming, aggregator collects all events so that we
+  // can compile them into a single response object and publish that to the
+  // remaining middleware. Because we have an OpenAI transformer for every
+  // supported format, EventAggregator always consumes OpenAI events so that we
+  // only have to write one aggregator (OpenAI input) for each output format.
   const aggregator = new EventAggregator({ format: req.outboundApi });
+
+  // Decoder reads from the raw response buffer and produces a stream of
+  // discrete events in some format (text/event-stream, vnd.amazon.event-stream,
+  // streaming JSON, etc).
+  const decoder = getDecoder({ ...streamOptions, input: proxyRes });
+  // Adapter consumes the decoded events and produces server-sent events so we
+  // have a standard transport for the client and to translate between API
+  // message formats.
+  const adapter = new SSEStreamAdapter(streamOptions);
   // Transformer converts server-sent events from one vendor's API message
   // format to another.
   const transformer = new SSEMessageTransformer({

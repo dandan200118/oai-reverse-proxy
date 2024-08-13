@@ -24,7 +24,7 @@ export function getAwsEventStreamDecoder(params: {
       if (eventType === "chunk") {
         result = input[eventType];
       } else {
-        // AWS unmarshaller treats non-chunk (errors and exceptions) oddly.
+        // AWS unmarshaller treats non-chunk events (errors and exceptions) oddly.
         result = { [eventType]: input[eventType] } as any;
       }
       return result;

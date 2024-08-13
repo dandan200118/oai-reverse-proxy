@@ -149,8 +149,8 @@ const SERVICE_ENDPOINTS: { [s in LLMService]: Record<string, string> } = {
     "mistral-ai": `%BASE%/mistral-ai`,
   },
   aws: {
-    claude: `%BASE%/aws/claude`,
-    mistral: `%BASE%/aws/mistral`,
+    "aws-claude": `%BASE%/aws/claude`,
+    "aws-mistral": `%BASE%/aws/mistral`,
   },
   gcp: {
     gcp: `%BASE%/gcp/claude`,

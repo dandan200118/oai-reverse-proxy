@@ -8,17 +8,25 @@ import { awsMistral } from "./aws-mistral";
 import { AwsBedrockKey, keyPool } from "../shared/key-management";
 
 const awsRouter = Router();
+awsRouter.get("/:vendor?/models", addV1, handleModelsRequest);
 awsRouter.use("/claude", addV1, awsClaude);
 awsRouter.use("/mistral", addV1, awsMistral);
-awsRouter.get("/:vendor?/models", handleModelsRequest);
 
 const MODELS_CACHE_TTL = 10000;
-let modelsCache: any = null;
-let modelsCacheTime = 0;
+let modelsCache: Record<string, any> = {};
+let modelsCacheTime: Record<string, number> = {};
 function handleModelsRequest(req: Request, res: Response) {
   if (!config.awsCredentials) return { object: "list", data: [] };
-  if (new Date().getTime() - modelsCacheTime < MODELS_CACHE_TTL) {
-    return res.json(modelsCache);
+
+  const vendor = req.params.vendor?.length
+    ? req.params.vendor === "claude"
+      ? "anthropic"
+      : req.params.vendor
+    : "all";
+
+  const cacheTime = modelsCacheTime[vendor] || 0;
+  if (new Date().getTime() - cacheTime < MODELS_CACHE_TTL) {
+    return res.json(modelsCache[vendor]);
   }
 
   const availableModelIds = new Set<string>();
@@ -43,27 +51,25 @@ function handleModelsRequest(req: Request, res: Response) {
   ]
     .filter((id) => availableModelIds.has(id))
     .map((id) => {
-    const vendor = id.match(/^(.*)\./)?.[1];
-    return {
-      id,
-      object: "model",
-      created: new Date().getTime(),
-      owned_by: vendor,
-      permission: [],
-      root: vendor,
-      parent: null,
-    };
-  });
+      const vendor = id.match(/^(.*)\./)?.[1];
+      return {
+        id,
+        object: "model",
+        created: new Date().getTime(),
+        owned_by: vendor,
+        permission: [],
+        root: vendor,
+        parent: null,
+      };
+    });
 
-  const requestedVendor = req.params.vendor;
-  const vendor = requestedVendor === "claude" ? "anthropic" : requestedVendor;
-  modelsCache = {
+  modelsCache[vendor] = {
     object: "list",
-    data: models.filter((m) => m.root === vendor),
+    data: models.filter((m) => vendor === "all" || m.root === vendor),
   };
-  modelsCacheTime = new Date().getTime();
+  modelsCacheTime[vendor] = new Date().getTime();
 
-  return res.json(modelsCache);
+  return res.json(modelsCache[vendor]);
 }
 
 export const aws = awsRouter;

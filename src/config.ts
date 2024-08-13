@@ -428,31 +428,10 @@ export const config: Config = {
     ["MAX_OUTPUT_TOKENS_ANTHROPIC", "MAX_OUTPUT_TOKENS"],
     400
   ),
-  allowedModelFamilies: getEnvWithDefault("ALLOWED_MODEL_FAMILIES", [
-    "turbo",
-    "gpt4",
-    "gpt4-32k",
-    "gpt4-turbo",
-    "gpt4o",
-    "claude",
-    "claude-opus",
-    "gemini-flash",
-    "gemini-pro",
-    "gemini-ultra",
-    "mistral-tiny",
-    "mistral-small",
-    "mistral-medium",
-    "mistral-large",
-    "aws-claude",
-    "aws-claude-opus",
-    "gcp-claude",
-    "gcp-claude-opus",
-    "azure-turbo",
-    "azure-gpt4",
-    "azure-gpt4-32k",
-    "azure-gpt4-turbo",
-    "azure-gpt4o",
-  ]),
+  allowedModelFamilies: getEnvWithDefault(
+    "ALLOWED_MODEL_FAMILIES",
+    getDefaultModelFamilies()
+  ),
   rejectPhrases: parseCsv(getEnvWithDefault("REJECT_PHRASES", "")),
   rejectMessage: getEnvWithDefault(
     "REJECT_MESSAGE",
@@ -800,4 +779,8 @@ function parseCsv(val: string): string[] {
   const regex = /(".*?"|[^",]+)(?=\s*,|\s*$)/g;
   const matches = val.match(regex) || [];
   return matches.map((item) => item.replace(/^"|"$/g, "").trim());
+}
+
+function getDefaultModelFamilies(): ModelFamily[] {
+  return MODEL_FAMILIES.filter((f) => !f.includes("dall-e")) as ModelFamily[];
 }

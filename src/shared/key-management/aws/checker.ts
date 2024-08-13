@@ -18,7 +18,7 @@ const KNOWN_MODEL_IDS = [
   "mistral.mixtral-8x7b-instruct-v0:1",
   "mistral.mistral-large-2402-v1:0",
   "mistral.mistral-large-2407-v1:0",
-  "mistral.mistral-small-2402-v1:0",
+  "mistral.mistral-small-2402-v1:0", // Seems to return 400
 ];
 const MIN_CHECK_INTERVAL = 3 * 1000; // 3 seconds
 const KEY_CHECK_PERIOD = 90 * 60 * 1000; // 90 minutes
@@ -88,7 +88,7 @@ export class AwsKeyChecker extends KeyCheckerBase<AwsBedrockKey> {
       });
     }
 
-    this.log.debug(
+    this.log.info(
       {
         key: key.hash,
         logged: key.awsLoggingStatus,
@@ -168,6 +168,15 @@ export class AwsKeyChecker extends KeyCheckerBase<AwsBedrockKey> {
     model: string,
     key: AwsBedrockKey
   ): Promise<boolean> {
+    if (model.includes("claude")) {
+      return this.testClaudeModel(key, model);
+    } else if (model.includes("mistral")) {
+      return this.testMistralModel(key, model);
+    }
+    throw new Error("AwsKeyChecker#invokeModel: no implementation for model");
+  }
+
+  private async testClaudeModel(key: AwsBedrockKey, model: string): Promise<boolean> {
     const creds = AwsKeyChecker.getCredentialsFromKey(key);
     // This is not a valid invocation payload, but a 400 response indicates that
     // the principal at least has permission to invoke the model.
@@ -194,7 +203,8 @@ export class AwsKeyChecker extends KeyCheckerBase<AwsBedrockKey> {
     const errorType = (headers["x-amzn-errortype"] as string).split(":")[0];
     const errorMessage = data?.message;
 
-    // We only allow one type of 403 error, and we only allow it for one model.
+    // This message indicates the key is valid but this particular model is not
+    // accessible. Other 403s may indicate the key is not usable.
     if (
       status === 403 &&
       errorMessage?.match(/access to the model with the specified model ID/)
@@ -217,6 +227,58 @@ export class AwsKeyChecker extends KeyCheckerBase<AwsBedrockKey> {
     const correctErrorType = errorType === "ValidationException";
     const correctErrorMessage = errorMessage?.match(/max_tokens/);
     if (!correctErrorType || !correctErrorMessage) {
+      this.log.debug(
+        { key: key.hash, model, errorType, data, status },
+        "AWS InvokeModel test unsuccessful."
+      );
+      return false;
+    }
+
+    this.log.debug(
+      { key: key.hash, model, errorType, data, status },
+      "AWS InvokeModel test successful."
+    );
+    return true;
+  }
+
+  private async testMistralModel(key: AwsBedrockKey, model: string): Promise<boolean> {
+    const creds = AwsKeyChecker.getCredentialsFromKey(key);
+
+    const payload = {
+      max_tokens: -1,
+      prompt: "<s>[INST] What is your favourite condiment? [/INST]</s>",
+    }
+    const config: AxiosRequestConfig = {
+      method: "POST",
+      url: POST_INVOKE_MODEL_URL(creds.region, model),
+      data: payload,
+      validateStatus: (status) => [400, 403, 404].includes(status),
+      headers: {
+        "content-type": "application/json",
+        accept: "*/*",
+      }
+    };
+    await AwsKeyChecker.signRequestForAws(config, key);
+    const response = await axios.request(config);
+    const { data, status, headers } = response;
+    const errorType = (headers["x-amzn-errortype"] as string).split(":")[0];
+    const errorMessage = data?.message;
+
+    if (status === 403 || status === 404) {
+      this.log.debug(
+        { key: key.hash, model, errorType, data, status },
+        "AWS InvokeModel test returned 403 or 404."
+      );
+      return false;
+    }
+
+    const isBadRequest = status === 400;
+    const isValidationError = errorMessage?.match(/validation error/i);
+    if (isBadRequest && !isValidationError) {
+      this.log.debug(
+        { key: key.hash, model, errorType, data, status, headers },
+        "AWS InvokeModel test returned 400 but not a validation error."
+      );
       return false;
     }
 

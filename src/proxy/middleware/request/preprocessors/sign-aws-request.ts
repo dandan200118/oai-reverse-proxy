@@ -1,4 +1,4 @@
-import express from "express";
+import express, { Request } from "express";
 import { Sha256 } from "@aws-crypto/sha256-js";
 import { SignatureV4 } from "@smithy/signature-v4";
 import { HttpRequest } from "@smithy/protocol-http";
@@ -8,6 +8,7 @@ import {
 } from "../../../../shared/api-schemas";
 import { keyPool } from "../../../../shared/key-management";
 import { RequestPreprocessor } from "../index";
+import { AWSMistralV1ChatCompletionsSchema } from "../../../../shared/api-schemas/mistral-ai";
 
 const AMZ_HOST =
   process.env.AMZ_HOST || "bedrock-runtime.%REGION%.amazonaws.com";
@@ -29,38 +30,6 @@ export const signAwsRequest: RequestPreprocessor = async (req) => {
     req.body.prompt = preamble + req.body.prompt;
   }
 
-  // AWS uses mostly the same parameters as Anthropic, with a few removed params
-  // and much stricter validation on unused parameters. Rather than treating it
-  // as a separate schema we will use the anthropic ones and strip the unused
-  // parameters.
-  // TODO: This should happen in transform-outbound-payload.ts
-  let strippedParams: Record<string, unknown>;
-  if (req.outboundApi === "anthropic-chat") {
-    strippedParams = AnthropicV1MessagesSchema.pick({
-      messages: true,
-      system: true,
-      max_tokens: true,
-      stop_sequences: true,
-      temperature: true,
-      top_k: true,
-      top_p: true,
-    })
-      .strip()
-      .parse(req.body);
-    strippedParams.anthropic_version = "bedrock-2023-05-31";
-  } else {
-    strippedParams = AnthropicV1TextSchema.pick({
-      prompt: true,
-      max_tokens_to_sample: true,
-      stop_sequences: true,
-      temperature: true,
-      top_k: true,
-      top_p: true,
-    })
-      .strip()
-      .parse(req.body);
-  }
-
   const credential = getCredentialParts(req);
   const host = AMZ_HOST.replace("%REGION%", credential.region);
   // AWS only uses 2023-06-01 and does not actually check this header, but we
@@ -78,7 +47,7 @@ export const signAwsRequest: RequestPreprocessor = async (req) => {
       ["Host"]: host,
       ["content-type"]: "application/json",
     },
-    body: JSON.stringify(strippedParams),
+    body: JSON.stringify(applyAwsSpecialCaseValidation(req)),
   });
 
   if (stream) {
@@ -127,4 +96,49 @@ async function sign(request: HttpRequest, credential: Credential) {
   });
 
   return signer.sign(request);
+}
+
+function applyAwsSpecialCaseValidation(req: Request): unknown {
+  // AWS uses vendor API formats but imposes additional (more strict) validation
+  // rules, namely that extraneous parameters are not allowed. We will validate
+  // using the vendor's zod schema but apply `.strip` to ensure that any
+  // extraneous parameters are removed.
+  let strippedParams: Record<string, unknown> = {};
+  switch (req.outboundApi) {
+    case "anthropic-text":
+      strippedParams = AnthropicV1TextSchema.pick({
+        prompt: true,
+        max_tokens_to_sample: true,
+        stop_sequences: true,
+        temperature: true,
+        top_k: true,
+        top_p: true,
+      })
+        .strip()
+        .parse(req.body);
+      break;
+    case "anthropic-chat":
+      strippedParams = AnthropicV1MessagesSchema.pick({
+        messages: true,
+        system: true,
+        max_tokens: true,
+        stop_sequences: true,
+        temperature: true,
+        top_k: true,
+        top_p: true,
+      })
+        .strip()
+        .parse(req.body);
+      strippedParams.anthropic_version = "bedrock-2023-05-31";
+      break;
+    case "mistral-ai":
+      // AWS Mistral helpfully returns no details if unsupported parameters are
+      // passed so this list comes from trial and error as of 2024-08-12.
+      strippedParams = AWSMistralV1ChatCompletionsSchema.parse(req.body);
+      break;
+    default:
+      throw new Error("Unexpected outbound API for AWS.");
+  }
+  req.log.info({ strippedParams }, "Stripped AWS params");
+  return strippedParams;
 }

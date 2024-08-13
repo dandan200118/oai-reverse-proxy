@@ -47,7 +47,7 @@ type GoogleAIChatTokenCountRequest = {
 };
 
 type MistralAIChatTokenCountRequest = {
-  prompt: MistralAIChatMessage[];
+  prompt: string | MistralAIChatMessage[];
   completion?: never;
   service: "mistral-ai";
 };

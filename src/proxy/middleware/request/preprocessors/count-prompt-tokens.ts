@@ -52,7 +52,8 @@ export const countPromptTokens: RequestPreprocessor = async (req) => {
     }
     case "mistral-ai": {
       req.outputTokens = req.body.max_tokens;
-      const prompt: MistralAIChatMessage[] = req.body.messages;
+      const prompt: string | MistralAIChatMessage[] =
+        req.body.messages ?? req.body.prompt;
       result = await countTokens({ req, prompt, service });
       break;
     }

@@ -221,9 +221,15 @@ export function getCompletionFromBody(req: Request, body: Record<string, any>) {
   switch (format) {
     case "openai":
     case "mistral-ai":
-      // Can be null if the model wants to invoke tools rather than return a
-      // completion.
-      return body.choices[0].message.content || "";
+      // Few possible values:
+      // - choices[0].message.content
+      // - choices[0].message with no content if model is invoking a tool
+      // - outputs[0].text for non-chat prompts
+      return (
+        body.choices?.[0]?.message?.content ||
+        body.outputs?.[0]?.text ||
+        ""
+      )
     case "openai-text":
       return body.choices[0].text;
     case "anthropic-chat":

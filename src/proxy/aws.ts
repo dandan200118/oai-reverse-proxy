@@ -8,7 +8,7 @@ import { awsMistral } from "./aws-mistral";
 import { AwsBedrockKey, keyPool } from "../shared/key-management";
 
 const awsRouter = Router();
-awsRouter.get("/:vendor?/models", addV1, handleModelsRequest);
+awsRouter.get(["/:vendor?/v1/models", "/:vendor?/models"], handleModelsRequest);
 awsRouter.use("/claude", addV1, awsClaude);
 awsRouter.use("/mistral", addV1, awsMistral);
 

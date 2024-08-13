@@ -29,7 +29,7 @@ export const transformOutboundPayload: RequestPreprocessor = async (req) => {
     if (!result.success) {
       req.log.warn(
         { issues: result.error.issues, body: req.body },
-        "Request validation failed"
+        "Native prompt request validation failed."
       );
       throw result.error;
     }
@@ -42,7 +42,7 @@ export const transformOutboundPayload: RequestPreprocessor = async (req) => {
   const transFn = API_REQUEST_TRANSFORMERS[transformation];
 
   if (transFn) {
-    req.log.info({ transformation }, "Transforming request");
+    req.log.info({ transformation }, "Transforming request...");
     req.body = await transFn(req);
     return;
   }
@@ -69,7 +69,7 @@ function handleMistralSpecialCase(req: Request): void {
     req.body.messages = fixMistralPrompt(messages);
     req.log.info(
       { old: messages.length, new: req.body.messages.length },
-      "Applied Mistral prompt fixes"
+      "Applied Mistral prompt fixes."
     );
   }
 }

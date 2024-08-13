@@ -86,7 +86,7 @@ async function executePreprocessors(
       const msg = error?.issues
         ?.map((issue: ZodIssue) => issue.message)
         .join("; ");
-      req.log.info(msg, "Prompt validation failed.");
+      req.log.warn({ issues: msg }, "Prompt validation failed.");
     } else {
       req.log.error(error, "Error while executing request preprocessor");
     }

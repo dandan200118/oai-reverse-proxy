@@ -47,7 +47,7 @@ export const signAwsRequest: RequestPreprocessor = async (req) => {
       ["Host"]: host,
       ["content-type"]: "application/json",
     },
-    body: JSON.stringify(applyAwsSpecialCaseValidation(req)),
+    body: JSON.stringify(applyAwsStrictValidation(req)),
   });
 
   if (stream) {
@@ -98,7 +98,7 @@ async function sign(request: HttpRequest, credential: Credential) {
   return signer.sign(request);
 }
 
-function applyAwsSpecialCaseValidation(req: Request): unknown {
+function applyAwsStrictValidation(req: Request): unknown {
   // AWS uses vendor API formats but imposes additional (more strict) validation
   // rules, namely that extraneous parameters are not allowed. We will validate
   // using the vendor's zod schema but apply `.strip` to ensure that any

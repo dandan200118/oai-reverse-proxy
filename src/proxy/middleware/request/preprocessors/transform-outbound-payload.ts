@@ -20,7 +20,7 @@ export const transformOutboundPayload: RequestPreprocessor = async (req) => {
 
   if (alreadyTransformed || notTransformable) return;
 
-  handleMistralSpecialCase(req);
+  applyMistralPromptFixes(req);
 
   // Native prompts are those which were already provided by the client in the
   // target API format. We don't need to transform them.
@@ -53,7 +53,7 @@ export const transformOutboundPayload: RequestPreprocessor = async (req) => {
 };
 
 // handles weird cases that don't fit into our abstractions
-function handleMistralSpecialCase(req: Request): void {
+function applyMistralPromptFixes(req: Request): void {
   if (req.inboundApi === "mistral-ai") {
     // Mistral is very similar to OpenAI but not identical and many clients
     // don't properly handle the differences. We will try to validate the

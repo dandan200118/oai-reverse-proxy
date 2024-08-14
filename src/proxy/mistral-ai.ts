@@ -1,4 +1,4 @@
-import { RequestHandler, Router } from "express";
+import express, { Request, RequestHandler, Router } from "express";
 import { createProxyMiddleware } from "http-proxy-middleware";
 import { config } from "../config";
 import { keyPool } from "../shared/key-management";
@@ -61,7 +61,7 @@ export const KNOWN_MISTRAL_AI_MODELS = [
   "mistral-medium-latest",
   "mistral-medium-2312",
   "mistral-tiny",
-  "mistral-tiny-2312"
+  "mistral-tiny-2312",
 ];
 
 let modelsCache: any = null;
@@ -108,8 +108,23 @@ const mistralAIResponseHandler: ProxyResHandlerWithBody = async (
     throw new Error("Expected body to be an object");
   }
 
-  res.status(200).json({ ...body, proxy: body.proxy });
+  let newBody = body;
+  if (req.inboundApi === "mistral-text" && req.outboundApi === "mistral-ai") {
+    newBody = transformMistralTextToMistralChat(body);
+  }
+
+  res.status(200).json({ ...newBody, proxy: body.proxy });
 };
+
+export function transformMistralTextToMistralChat(textBody: any) {
+  return {
+    ...textBody,
+    choices: [
+      { message: { content: textBody.outputs[0].text, role: "assistant" } },
+    ],
+    outputs: undefined,
+  };
+}
 
 const mistralAIProxy = createQueueMiddleware({
   proxyMiddleware: createProxyMiddleware({
@@ -133,12 +148,32 @@ mistralAIRouter.get("/v1/models", handleModelRequest);
 mistralAIRouter.post(
   "/v1/chat/completions",
   ipLimiter,
-  createPreprocessorMiddleware({
-    inApi: "mistral-ai",
-    outApi: "mistral-ai",
-    service: "mistral-ai",
-  }),
+  createPreprocessorMiddleware(
+    {
+      inApi: "mistral-ai",
+      outApi: "mistral-ai",
+      service: "mistral-ai",
+    },
+    { beforeTransform: [detectMistralInputApi] }
+  ),
   mistralAIProxy
 );
+
+/**
+ * We can't determine if a request is Mistral text or chat just from the path
+ * because they both use the same endpoint. We need to check the request body
+ * for either `messages` or `prompt`.
+ * @param req
+ */
+export function detectMistralInputApi(req: Request) {
+  const { messages, prompt } = req.body;
+  if (messages) {
+    req.inboundApi = "mistral-ai";
+    req.outboundApi = "mistral-ai";
+  } else if (prompt) {
+    req.inboundApi = "mistral-text";
+    req.outboundApi = "mistral-text";
+  }
+}
 
 export const mistralAI = mistralAIRouter;

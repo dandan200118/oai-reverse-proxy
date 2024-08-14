@@ -11,7 +11,8 @@ import { ProxyResHandlerWithBody } from ".";
 import { assertNever } from "../../../shared/utils";
 import {
   AnthropicChatMessage,
-  flattenAnthropicMessages, GoogleAIChatMessage,
+  flattenAnthropicMessages,
+  GoogleAIChatMessage,
   MistralAIChatMessage,
   OpenAIChatMessage,
 } from "../../../shared/api-schemas";
@@ -76,6 +77,8 @@ const getPromptForRequest = (
     case "anthropic-chat":
       return { system: req.body.system, messages: req.body.messages };
     case "openai-text":
+    case "anthropic-text":
+    case "mistral-text":
       return req.body.prompt;
     case "openai-image":
       return {
@@ -85,8 +88,6 @@ const getPromptForRequest = (
         quality: req.body.quality,
         revisedPrompt: responseBody.data[0].revised_prompt,
       };
-    case "anthropic-text":
-      return req.body.prompt;
     case "google-ai":
       return { contents: req.body.contents };
     default:
@@ -113,9 +114,7 @@ const flattenMessages = (
   if (isGoogleAIChatPrompt(val)) {
     return val.contents
       .map(({ parts, role }) => {
-        const text = parts
-          .map((p) => p.text)
-          .join("\n");
+        const text = parts.map((p) => p.text).join("\n");
         return `${role}: ${text}`;
       })
       .join("\n");
@@ -143,11 +142,7 @@ const flattenMessages = (
 function isGoogleAIChatPrompt(
   val: unknown
 ): val is { contents: GoogleAIChatMessage[] } {
-  return (
-    typeof val === "object" &&
-    val !== null &&
-    "contents" in val
-  );
+  return typeof val === "object" && val !== null && "contents" in val;
 }
 
 function isAnthropicChatPrompt(

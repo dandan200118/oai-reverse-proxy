@@ -76,7 +76,7 @@ export const handleStreamedResponse: RawResponseBodyHandler = async (
   // remaining middleware. Because we have an OpenAI transformer for every
   // supported format, EventAggregator always consumes OpenAI events so that we
   // only have to write one aggregator (OpenAI input) for each output format.
-  const aggregator = new EventAggregator({ format: req.outboundApi });
+  const aggregator = new EventAggregator(req);
 
   // Decoder reads from the raw response buffer and produces a stream of
   // discrete events in some format (text/event-stream, vnd.amazon.event-stream,

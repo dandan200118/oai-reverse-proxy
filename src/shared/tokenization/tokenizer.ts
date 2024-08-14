@@ -49,7 +49,7 @@ type GoogleAIChatTokenCountRequest = {
 type MistralAIChatTokenCountRequest = {
   prompt: string | MistralAIChatMessage[];
   completion?: never;
-  service: "mistral-ai";
+  service: "mistral-ai" | "mistral-text";
 };
 
 type FlatPromptTokenCountRequest = {
@@ -128,6 +128,7 @@ export async function countTokens({
         tokenization_duration_ms: getElapsedMs(time),
       };
     case "mistral-ai":
+    case "mistral-text":
       return {
         ...getMistralAITokenCount(prompt ?? completion),
         tokenization_duration_ms: getElapsedMs(time),

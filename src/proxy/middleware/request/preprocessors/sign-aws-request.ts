@@ -8,7 +8,10 @@ import {
 } from "../../../../shared/api-schemas";
 import { keyPool } from "../../../../shared/key-management";
 import { RequestPreprocessor } from "../index";
-import { AWSMistralV1ChatCompletionsSchema } from "../../../../shared/api-schemas/mistral-ai";
+import {
+  AWSMistralV1ChatCompletionsSchema,
+  AWSMistralV1TextCompletionsSchema,
+} from "../../../../shared/api-schemas/mistral-ai";
 
 const AMZ_HOST =
   process.env.AMZ_HOST || "bedrock-runtime.%REGION%.amazonaws.com";
@@ -132,13 +135,13 @@ function applyAwsStrictValidation(req: Request): unknown {
       strippedParams.anthropic_version = "bedrock-2023-05-31";
       break;
     case "mistral-ai":
-      // AWS Mistral helpfully returns no details if unsupported parameters are
-      // passed so this list comes from trial and error as of 2024-08-12.
       strippedParams = AWSMistralV1ChatCompletionsSchema.parse(req.body);
+      break;
+    case "mistral-text":
+      strippedParams = AWSMistralV1TextCompletionsSchema.parse(req.body);
       break;
     default:
       throw new Error("Unexpected outbound API for AWS.");
   }
-  req.log.info({ strippedParams }, "Stripped AWS params");
   return strippedParams;
 }

@@ -189,6 +189,11 @@ export function buildSpoofedCompletion({
           },
         ],
       };
+    case "mistral-text":
+      return {
+        outputs: [{ text: content, stop_reason: title }],
+        model,
+      }
     case "openai-text":
       return {
         id: "error-" + id,
@@ -265,6 +270,11 @@ export function buildSpoofedSSE({
         created: Date.now(),
         model,
         choices: [{ delta: { content }, index: 0, finish_reason: title }],
+      };
+      break;
+    case "mistral-text":
+      event = {
+        outputs: [{ text: content, stop_reason: title }],
       };
       break;
     case "openai-text":

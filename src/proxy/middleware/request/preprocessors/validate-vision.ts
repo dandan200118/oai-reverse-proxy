@@ -28,6 +28,7 @@ export const validateVision: RequestPreprocessor = async (req) => {
     case "anthropic-text":
     case "google-ai":
     case "mistral-ai":
+    case "mistral-text":
     case "openai-image":
     case "openai-text":
       return;

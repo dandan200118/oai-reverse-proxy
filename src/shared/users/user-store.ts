@@ -431,6 +431,7 @@ function getModelFamilyForQuotaUsage(
     case "google-ai":
       return getGoogleAIModelFamily(model);
     case "mistral-ai":
+    case "mistral-text":
       return getMistralAIModelFamily(model);
     default:
       assertNever(api);

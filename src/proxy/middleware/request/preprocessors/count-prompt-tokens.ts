@@ -2,7 +2,6 @@ import { RequestPreprocessor } from "../index";
 import { countTokens } from "../../../../shared/tokenization";
 import { assertNever } from "../../../../shared/utils";
 import {
-  AnthropicChatMessage,
   GoogleAIChatMessage,
   MistralAIChatMessage,
   OpenAIChatMessage,
@@ -50,7 +49,8 @@ export const countPromptTokens: RequestPreprocessor = async (req) => {
       result = await countTokens({ req, prompt, service });
       break;
     }
-    case "mistral-ai": {
+    case "mistral-ai":
+    case "mistral-text": {
       req.outputTokens = req.body.max_tokens;
       const prompt: string | MistralAIChatMessage[] =
         req.body.messages ?? req.body.prompt;

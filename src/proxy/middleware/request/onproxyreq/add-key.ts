@@ -38,7 +38,10 @@ export const addKey: HPMRequestCallback = (proxyReq, req) => {
       // translation now reassigns the model earlier in the request pipeline.
       case "anthropic-text":
       case "anthropic-chat":
-        assignedKey = keyPool.get("claude-v1", service, needsMultimodal);
+      case "mistral-ai":
+      case "mistral-text":
+      case "google-ai":
+        assignedKey = keyPool.get(body.model, service);
         break;
       case "openai-text":
         assignedKey = keyPool.get("gpt-3.5-turbo-instruct", service);
@@ -47,10 +50,8 @@ export const addKey: HPMRequestCallback = (proxyReq, req) => {
         assignedKey = keyPool.get("dall-e-3", service);
         break;
       case "openai":
-      case "google-ai":
-      case "mistral-ai":
         throw new Error(
-          `add-key should not be called for outbound API ${outboundApi}`
+          `Outbound API ${outboundApi} is not supported for ${inboundApi}`
         );
       default:
         assertNever(outboundApi);

@@ -265,6 +265,7 @@ export function getModelFamilyForRequest(req: Request): ModelFamily {
         modelFamily = getGoogleAIModelFamily(model);
         break;
       case "mistral-ai":
+      case "mistral-text":
         modelFamily = getMistralAIModelFamily(model);
         break;
       default:

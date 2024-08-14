@@ -21,7 +21,11 @@ import {
   GoogleAIV1GenerateContentSchema,
   transformOpenAIToGoogleAI,
 } from "./google-ai";
-import { MistralAIV1ChatCompletionsSchema } from "./mistral-ai";
+import {
+  MistralAIV1ChatCompletionsSchema,
+  MistralAIV1TextCompletionsSchema,
+  transformMistralChatToText,
+} from "./mistral-ai";
 
 export { OpenAIChatMessage } from "./openai";
 export {
@@ -49,6 +53,7 @@ export const API_REQUEST_TRANSFORMERS: TransformerMap = {
   "openai->openai-text": transformOpenAIToOpenAIText,
   "openai->openai-image": transformOpenAIToOpenAIImage,
   "openai->google-ai": transformOpenAIToGoogleAI,
+  "mistral-ai->mistral-text": transformMistralChatToText,
 };
 
 export const API_REQUEST_VALIDATORS: Record<APIFormat, z.ZodSchema<any>> = {
@@ -59,4 +64,5 @@ export const API_REQUEST_VALIDATORS: Record<APIFormat, z.ZodSchema<any>> = {
   "openai-image": OpenAIV1ImagesGenerationSchema,
   "google-ai": GoogleAIV1GenerateContentSchema,
   "mistral-ai": MistralAIV1ChatCompletionsSchema,
+  "mistral-text": MistralAIV1TextCompletionsSchema,
 };

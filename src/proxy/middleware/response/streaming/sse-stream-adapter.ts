@@ -55,8 +55,10 @@ export class SSEStreamAdapter extends Transform {
 
           if ("completion" in eventObj) {
             return ["event: completion", `data: ${event}`].join(`\n`);
-          } else {
+          } else if (eventObj.type) {
             return [`event: ${eventObj.type}`, `data: ${event}`].join(`\n`);
+          } else {
+            return `data: ${event}`;
           }
         }
       // noinspection FallThroughInSwitchStatementJS -- non-JSON data is unexpected

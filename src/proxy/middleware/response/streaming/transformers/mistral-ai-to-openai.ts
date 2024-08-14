@@ -1,31 +1,11 @@
 import { logger } from "../../../../../logger";
-import { SSEResponseTransformArgs } from "../index";
+import { MistralAIStreamEvent, SSEResponseTransformArgs } from "../index";
 import { parseEvent, ServerSentEvent } from "../parse-sse";
 
 const log = logger.child({
   module: "sse-transformer",
   transformer: "mistral-ai-to-openai",
 });
-
-type MistralChatCompletionEvent = {
-  choices: {
-    index: number;
-    message: { role: string; content: string };
-    stop_reason: string | null;
-  }[];
-};
-type MistralTextCompletionEvent = {
-  outputs: { text: string; stop_reason: string | null }[];
-};
-
-type MistralAIStreamEvent = {
-  "amazon-bedrock-invocationMetrics"?: {
-    inputTokenCount: number;
-    outputTokenCount: number;
-    invocationLatency: number;
-    firstByteLatency: number;
-  };
-} & (MistralChatCompletionEvent | MistralTextCompletionEvent);
 
 export const mistralAIToOpenAI = (params: SSEResponseTransformArgs) => {
   const { data } = params;

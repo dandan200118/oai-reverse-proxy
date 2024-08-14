@@ -56,8 +56,6 @@ function getPromptFromRequest(req: Request) {
   switch (service) {
     case "anthropic-chat":
       return flattenAnthropicMessages(body.messages);
-    case "anthropic-text":
-      return body.prompt;
     case "openai":
     case "mistral-ai":
       return body.messages
@@ -72,8 +70,10 @@ function getPromptFromRequest(req: Request) {
           return `${msg.role}: ${text}`;
         })
         .join("\n\n");
+    case "anthropic-text":
     case "openai-text":
     case "openai-image":
+    case "mistral-text":
       return body.prompt;
     case "google-ai":
       return body.prompt.text;

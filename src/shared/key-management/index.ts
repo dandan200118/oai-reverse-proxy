@@ -9,7 +9,8 @@ export type APIFormat =
   | "anthropic-chat" // Anthropic's newer messages array format
   | "anthropic-text" // Legacy flat string prompt format
   | "google-ai"
-  | "mistral-ai";
+  | "mistral-ai"
+  | "mistral-text"
 
 export interface Key {
   /** The API key itself. Never log this, use `hash` instead. */

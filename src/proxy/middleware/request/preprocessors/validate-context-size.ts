@@ -38,6 +38,7 @@ export const validateContextSize: RequestPreprocessor = async (req) => {
       proxyMax = GOOGLE_AI_MAX_CONTEXT;
       break;
     case "mistral-ai":
+    case "mistral-text":
       proxyMax = MISTRAL_AI_MAX_CONTENT;
       break;
     case "openai-image":

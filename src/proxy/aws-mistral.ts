@@ -15,6 +15,7 @@ import { logger } from "../logger";
 import { handleProxyError } from "./middleware/common";
 import { Router } from "express";
 import { ipLimiter } from "./rate-limit";
+import { detectMistralInputApi, transformMistralTextToMistralChat } from "./mistral-ai";
 
 const awsMistralBlockingResponseHandler: ProxyResHandlerWithBody = async (
   _proxyRes,
@@ -26,12 +27,16 @@ const awsMistralBlockingResponseHandler: ProxyResHandlerWithBody = async (
     throw new Error("Expected body to be an object");
   }
 
+  let newBody = body;
+  if (req.inboundApi === "mistral-ai" && req.outboundApi === "mistral-text") {
+    newBody = transformMistralTextToMistralChat(body);
+  }
   // AWS does not always confirm the model in the response, so we have to add it
-  if (!body.model && req.body.model) {
-    body.model = req.body.model;
+  if (!newBody.model && req.body.model) {
+    newBody.model = req.body.model;
   }
 
-  res.status(200).json({ ...body, proxy: body.proxy });
+  res.status(200).json({ ...newBody, proxy: body.proxy });
 };
 
 const awsMistralProxy = createQueueMiddleware({
@@ -80,13 +85,18 @@ function maybeReassignModel(req: Request) {
   else if (model.includes("small")) {
     req.body.model = "mistral.mistral-small-2402-v1:0";
   } else {
-    throw new Error(`Can't map '${model}' to a supported AWS model ID; make sure you are requesting a Mistral model supported by Amazon Bedrock`);
+    throw new Error(
+      `Can't map '${model}' to a supported AWS model ID; make sure you are requesting a Mistral model supported by Amazon Bedrock`
+    );
   }
 }
 
 const nativeMistralChatPreprocessor = createPreprocessorMiddleware(
   { inApi: "mistral-ai", outApi: "mistral-ai", service: "aws" },
-  { afterTransform: [maybeReassignModel] }
+  {
+    beforeTransform: [detectMistralInputApi],
+    afterTransform: [maybeReassignModel],
+  }
 );
 
 const awsMistralRouter = Router();

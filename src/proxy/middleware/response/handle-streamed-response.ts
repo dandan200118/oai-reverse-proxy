@@ -83,7 +83,7 @@ export const handleStreamedResponse: RawResponseBodyHandler = async (
   // streaming JSON, etc).
   const decoder = getDecoder({ ...streamOptions, input: proxyRes });
   // Adapter consumes the decoded events and produces server-sent events so we
-  // have a standard transport for the client and to translate between API
+  // have a standard event format for the client and to translate between API
   // message formats.
   const adapter = new SSEStreamAdapter(streamOptions);
   // Transformer converts server-sent events from one vendor's API message

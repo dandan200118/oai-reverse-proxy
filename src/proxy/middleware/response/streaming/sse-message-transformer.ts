@@ -14,6 +14,7 @@ import {
   passthroughToOpenAI,
   StreamingCompletionTransformer,
 } from "./index";
+import { mistralAIToOpenAI } from "./transformers/mistral-ai-to-openai";
 
 type SSEMessageTransformerOptions = TransformOptions & {
   requestedModel: string;
@@ -130,7 +131,6 @@ function getTransformer(
 > {
   switch (responseApi) {
     case "openai":
-    case "mistral-ai":
       return passthroughToOpenAI;
     case "openai-text":
       return openAITextToOpenAIChat;
@@ -144,6 +144,8 @@ function getTransformer(
         : anthropicChatToOpenAI;
     case "google-ai":
       return googleAIToOpenAI;
+    case "mistral-ai":
+      return mistralAIToOpenAI;
     case "openai-image":
       throw new Error(`SSE transformation not supported for ${responseApi}`);
     default:

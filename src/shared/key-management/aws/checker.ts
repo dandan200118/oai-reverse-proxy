@@ -8,17 +8,21 @@ import type { AwsBedrockKey, AwsBedrockKeyProvider } from "./provider";
 import { getAwsBedrockModelFamily } from "../../models";
 import { config } from "../../../config";
 
-const KNOWN_MODEL_IDS = [
-  "anthropic.claude-v2",
-  "anthropic.claude-3-sonnet-20240229-v1:0",
-  "anthropic.claude-3-haiku-20240307-v1:0",
-  "anthropic.claude-3-opus-20240229-v1:0",
-  "anthropic.claude-3-5-sonnet-20240620-v1:0",
-  "mistral.mistral-7b-instruct-v0:2",
-  "mistral.mixtral-8x7b-instruct-v0:1",
-  "mistral.mistral-large-2402-v1:0",
-  "mistral.mistral-large-2407-v1:0",
-  "mistral.mistral-small-2402-v1:0", // Seems to return 400
+type ParentModelId = string;
+type AliasModelId = string;
+type ModuleAliasTuple = [ParentModelId, ...AliasModelId[]];
+
+const KNOWN_MODEL_IDS: ModuleAliasTuple[] = [
+  ["anthropic.claude-v2", "anthropic.claude-v2:1"],
+  ["anthropic.claude-3-sonnet-20240229-v1:0"],
+  ["anthropic.claude-3-haiku-20240307-v1:0"],
+  ["anthropic.claude-3-opus-20240229-v1:0"],
+  ["anthropic.claude-3-5-sonnet-20240620-v1:0"],
+  ["mistral.mistral-7b-instruct-v0:2"],
+  ["mistral.mixtral-8x7b-instruct-v0:1"],
+  ["mistral.mistral-large-2402-v1:0"],
+  ["mistral.mistral-large-2407-v1:0"],
+  ["mistral.mistral-small-2402-v1:0"], // Seems to return 400
 ];
 const MIN_CHECK_INTERVAL = 3 * 1000; // 3 seconds
 const KEY_CHECK_PERIOD = 90 * 60 * 1000; // 90 minutes
@@ -62,15 +66,21 @@ export class AwsKeyChecker extends KeyCheckerBase<AwsBedrockKey> {
     const isInitialCheck = !key.lastChecked;
 
     if (isInitialCheck) {
-      const checks = await Promise.all(
-        KNOWN_MODEL_IDS.map(async (model) => {
-          const success = await this.invokeModel(model, key);
-          return { model, success };
-        })
+      // Perform checks for all parent model IDs
+      const results = await Promise.all(
+        KNOWN_MODEL_IDS.filter(([model]) =>
+          // Skip checks for models that are disabled anyway
+          config.allowedModelFamilies.includes(getAwsBedrockModelFamily(model))
+        ).map(async ([model, ...aliases]) => ({
+          models: [model, ...aliases],
+          success: await this.invokeModel(model, key),
+        }))
       );
-      const modelIds = checks
+
+      // Filter out models that are disabled
+      const modelIds = results
         .filter(({ success }) => success)
-        .map(({ model }) => model);
+        .flatMap(({ models }) => models);
 
       if (modelIds.length === 0) {
         this.log.warn(
@@ -176,7 +186,10 @@ export class AwsKeyChecker extends KeyCheckerBase<AwsBedrockKey> {
     throw new Error("AwsKeyChecker#invokeModel: no implementation for model");
   }
 
-  private async testClaudeModel(key: AwsBedrockKey, model: string): Promise<boolean> {
+  private async testClaudeModel(
+    key: AwsBedrockKey,
+    model: string
+  ): Promise<boolean> {
     const creds = AwsKeyChecker.getCredentialsFromKey(key);
     // This is not a valid invocation payload, but a 400 response indicates that
     // the principal at least has permission to invoke the model.
@@ -241,13 +254,16 @@ export class AwsKeyChecker extends KeyCheckerBase<AwsBedrockKey> {
     return true;
   }
 
-  private async testMistralModel(key: AwsBedrockKey, model: string): Promise<boolean> {
+  private async testMistralModel(
+    key: AwsBedrockKey,
+    model: string
+  ): Promise<boolean> {
     const creds = AwsKeyChecker.getCredentialsFromKey(key);
 
     const payload = {
       max_tokens: -1,
       prompt: "<s>[INST] What is your favourite condiment? [/INST]</s>",
-    }
+    };
     const config: AxiosRequestConfig = {
       method: "POST",
       url: POST_INVOKE_MODEL_URL(creds.region, model),
@@ -256,7 +272,7 @@ export class AwsKeyChecker extends KeyCheckerBase<AwsBedrockKey> {
       headers: {
         "content-type": "application/json",
         accept: "*/*",
-      }
+      },
     };
     await AwsKeyChecker.signRequestForAws(config, key);
     const response = await axios.request(config);

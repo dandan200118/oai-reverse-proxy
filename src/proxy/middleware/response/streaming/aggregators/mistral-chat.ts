@@ -1,17 +1,5 @@
 import { OpenAIChatCompletionStreamEvent } from "../index";
 
-/*
-    "choices": [
-        {
-            "index": 0,
-            "message": {
-                "role": "assistant",
-                "content": "Genshin Impact is an action role-play"
-            },
-            "stop_reason": "length"
-        }
-    ],
- */
 export type MistralChatCompletionResponse = {
   choices: {
     index: number;

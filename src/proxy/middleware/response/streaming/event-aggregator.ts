@@ -55,9 +55,7 @@ export class EventAggregator {
       let openAIEvent: OpenAIChatCompletionStreamEvent | undefined;
       switch (this.requestFormat) {
         case "anthropic-text":
-          if (!eventIsAnthropicV2Event(event)) {
-            throw new Error(`Bad event for Anthropic V2 SSE aggregation`);
-          }
+          assertIsAnthropicV2Event(event);
           openAIEvent = anthropicV2ToOpenAI({
             data: `event: completion\ndata: ${JSON.stringify(event)}\n\n`,
             lastPosition: -1,
@@ -67,9 +65,7 @@ export class EventAggregator {
           })?.event;
           break;
         case "mistral-ai":
-          if (!eventIsMistralChatEvent(event)) {
-            throw new Error(`Bad event for Mistral SSE aggregation`);
-          }
+          assertIsMistralChatEvent(event);
           openAIEvent = mistralAIToOpenAI({
             data: `data: ${JSON.stringify(event)}\n\n`,
             lastPosition: -1,
@@ -120,12 +116,16 @@ function eventIsOpenAIEvent(
   return event?.object === "chat.completion.chunk";
 }
 
-function eventIsAnthropicV2Event(event: any): event is AnthropicV2StreamEvent {
-  return event?.completion;
+function assertIsAnthropicV2Event(event: any): asserts event is AnthropicV2StreamEvent {
+  if (!event?.completion) {
+    throw new Error(`Bad event for Anthropic V2 SSE aggregation`);
+  }
 }
 
-function eventIsMistralChatEvent(
+function assertIsMistralChatEvent(
   event: any
-): event is MistralChatCompletionEvent {
-  return event?.choices;
+): asserts event is MistralChatCompletionEvent {
+  if (!event?.choices) {
+    throw new Error(`Bad event for Mistral SSE aggregation`);
+  }
 }

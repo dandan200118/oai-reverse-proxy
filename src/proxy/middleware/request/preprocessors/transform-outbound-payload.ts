@@ -59,15 +59,12 @@ function applyMistralPromptFixes(req: Request): void {
     // don't properly handle the differences. We will try to validate the
     // mistral prompt and try to fix it if it fails. It will be re-validated
     // after this function returns.
-    const result = API_REQUEST_VALIDATORS["mistral-ai"].safeParse(req.body);
-    if (!result.success) {
-      const messages = req.body.messages;
-      req.body.messages = fixMistralPrompt(messages);
-      req.log.info(
-        { old: messages.length, new: req.body.messages.length },
-        "Applied Mistral chat prompt fixes."
-      );
-    }
+    const result = API_REQUEST_VALIDATORS["mistral-ai"].parse(req.body);
+    req.body.messages = fixMistralPrompt(result.messages);
+    req.log.info(
+      { n: req.body.messages.length, prev: result.messages.length },
+      "Applied Mistral chat prompt fixes."
+    );
 
     // If the prompt relies on `prefix: true` for the last message, we need to
     // convert it to a text completions request because Mistral support for

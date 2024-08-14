@@ -27,7 +27,6 @@ const MistralMessagesSchema = z.array(MistralChatMessageSchema).refine(
 // https://docs.mistral.ai/api#operation/createChatCompletion
 const BaseMistralAIV1CompletionsSchema = z.object({
   model: z.string(),
-  // One must be provided, checked in a refinement
   messages: MistralMessagesSchema.optional(),
   prompt: z.string().optional(),
   temperature: z.number().optional().default(0.7),

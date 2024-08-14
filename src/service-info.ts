@@ -85,10 +85,10 @@ type AnthropicInfo = BaseFamilyInfo & {
 };
 type AwsInfo = BaseFamilyInfo & {
   privacy?: string;
-  claudeVariants?: string;
+  enabledVariants?: string;
 };
 type GcpInfo = BaseFamilyInfo & {
-  claudeVariants?: string;
+  enabledVariants?: string;
 };
 
 // prettier-ignore
@@ -346,17 +346,20 @@ function addKeyToAggregates(k: KeyPoolKey) {
     case "aws": {
       if (!keyIsAwsKey(k)) throw new Error("Invalid key type");
       k.modelFamilies.forEach(incrementGenericFamilyStats);
-      k.modelIds.forEach((id) => {
-        if (id.includes("claude-3-sonnet")) {
-          addToFamily(`aws-claude__awsSonnet3`, 1);
-        } else if (id.includes("claude-3-5-sonnet")) {
-          addToFamily(`aws-claude__awsSonnet3_5`, 1);
-        } else if (id.includes("claude-3-haiku")) {
-          addToFamily(`aws-claude__awsHaiku`, 1);
-        } else if (id.includes("claude-v2")) {
-          addToFamily(`aws-claude__awsClaude2`, 1);
-        }
-      });
+      if (!k.isDisabled) {
+        // Don't add revoked keys to available AWS variants
+        k.modelIds.forEach((id) => {
+          if (id.includes("claude-3-sonnet")) {
+            addToFamily(`aws-claude__awsSonnet3`, 1);
+          } else if (id.includes("claude-3-5-sonnet")) {
+            addToFamily(`aws-claude__awsSonnet3_5`, 1);
+          } else if (id.includes("claude-3-haiku")) {
+            addToFamily(`aws-claude__awsHaiku`, 1);
+          } else if (id.includes("claude-v2")) {
+            addToFamily(`aws-claude__awsClaude2`, 1);
+          }
+        });
+      }
       // Ignore revoked keys for aws logging stats, but include keys where the
       // logging status is unknown.
       const countAsLogged =
@@ -416,17 +419,17 @@ function getInfoForFamily(family: ModelFamily): BaseFamilyInfo {
       case "aws":
         if (family === "aws-claude") {
           const logged = familyStats.get(`${family}__awsLogged`) || 0;
-          const claudeVariants = new Set<string>();
+          const variants = new Set<string>();
           if (familyStats.get(`${family}__awsClaude2`) || 0)
-            claudeVariants.add("claude v2");
+            variants.add("claude2");
           if (familyStats.get(`${family}__awsSonnet3`) || 0)
-            claudeVariants.add("sonnet 3");
+            variants.add("sonnet3");
           if (familyStats.get(`${family}__awsSonnet3_5`) || 0)
-            claudeVariants.add("sonnet 3.5");
+            variants.add("sonnet3.5");
           if (familyStats.get(`${family}__awsHaiku`) || 0)
-            claudeVariants.add("haiku");
-          info.claudeVariants = claudeVariants.size
-            ? `${Array.from(claudeVariants).join(", ")}`
+            variants.add("haiku");
+          info.enabledVariants = variants.size
+            ? `${Array.from(variants).join(",")}`
             : undefined;
           if (logged > 0) {
             info.privacy = config.allowAwsLogging
@@ -438,7 +441,7 @@ function getInfoForFamily(family: ModelFamily): BaseFamilyInfo {
       case "gcp":
         if (family === "gcp-claude") {
           // TODO: implement
-          info.claudeVariants = "not implemented";
+          info.enabledVariants = "not implemented";
         }
         break;
     }

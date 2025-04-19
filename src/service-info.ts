@@ -426,6 +426,8 @@ function getInfoForFamily(family: ModelFamily): BaseFamilyInfo {
             variants.add("sonnet3");
           if (familyStats.get(`${family}__awsSonnet3_5`) || 0)
             variants.add("sonnet3.5");
+          if (familyStats.get(`${family}__awsSonnet3_7`) || 0)
+            variants.add("sonnet3.7");
           if (familyStats.get(`${family}__awsHaiku`) || 0)
             variants.add("haiku");
           info.enabledVariants = variants.size

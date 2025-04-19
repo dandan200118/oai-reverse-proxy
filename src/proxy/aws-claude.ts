@@ -238,6 +238,13 @@ function maybeReassignModel(req: Request) {
               return;
           }
           break;
+        case "3.7":
+          switch (rev) {
+            case "20250217":
+            case "latest":
+              req.body.model = "anthropic.claude-3-7-sonnet-20250219-v1:0";
+              return;
+          }
         case "haiku":
           switch (rev) {
             case "20241022":
